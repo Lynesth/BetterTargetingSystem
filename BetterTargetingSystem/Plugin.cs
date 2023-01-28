@@ -379,7 +379,7 @@ namespace BetterTargetingSystem
 
                 if (distance > 5 && IsInFrontOfCamera(obj, 90) == false) continue;
 
-                if (distance < 5)
+                if (distance <= 5)
                 {
                     // Close to the player, adding it to the Close targets list
                     CloseTargetsList.Add(obj);
