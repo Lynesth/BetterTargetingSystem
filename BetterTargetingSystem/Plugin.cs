@@ -309,7 +309,8 @@ public sealed unsafe class Plugin : IDalamudPlugin
         var TargetsEnemyList = new List<DalamudGameObject>();
         var OnScreenTargetsList = new List<DalamudGameObject>();
 
-        if (Client.LocalPlayer == null)
+        var Player = Client.LocalPlayer != null ? (GameObject*)Client.LocalPlayer.Address : null;
+        if (Player == null)
             return new ObjectsList(TargetsList, CloseTargetsList, TargetsEnemyList, OnScreenTargetsList);
 
         // There might be a way to store this and just update the values if they actually change
@@ -337,8 +338,10 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
             if (o->GetIsTargetable() == false) continue;
 
-            // If the object is part of another party's treasure hunt, we ignore it
-            if (o->EventId.Type == EventHandlerType.TreasureHuntDirector && o->NamePlateIconId != 60094) continue;
+            // If the object is part of another party's treasure hunt/leve, we ignore it
+            if ((o->EventId.Type == EventHandlerType.TreasureHuntDirector || o->EventId.Type == EventHandlerType.BattleLeveDirector)
+                && o->EventId.Id != Player->EventId.Id)
+                continue;
 
             var distance = DistanceToPlayer(obj);
 
