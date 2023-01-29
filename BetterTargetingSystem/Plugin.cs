@@ -8,6 +8,7 @@ using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Logging;
 using Dalamud.Plugin;
+using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Common.Component.BGCollision;
@@ -24,10 +25,12 @@ using ObjectKind = Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
 using GameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 using CameraManager = FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CameraManager;
 using CSFramework = FFXIVClientStructs.FFXIV.Client.System.Framework.Framework;
+using Dalamud.Utility.Signatures;
 
 namespace BetterTargetingSystem
 {
-    unsafe public sealed class Plugin : IDalamudPlugin
+
+    public sealed unsafe class Plugin : IDalamudPlugin
     {
         public string Name => "Better Targeting System";
         public string CommandName => "/bts";
@@ -51,10 +54,10 @@ namespace BetterTargetingSystem
 
         private ConfigWindow ConfigWindow { get; init; }
 
-        // Shamelessly stolen, not sure what it does exactly but it works
-        // ¯\_(ツ)_/¯
-        private const string CanAttackSig = "48 89 5C 24 ?? 57 48 83 EC 20 48 8B DA 8B F9 E8 ?? ?? ?? ?? 4C 8B C3";
-        private static IntPtr CanAttackPtr;
+        // Shamelessly stolen, not sure what that game function exactly does but it works
+        private delegate nint CanAttackDelegate(nint a1, nint objectAddress);
+        [Signature("48 89 5C 24 ?? 57 48 83 EC 20 48 8B DA 8B F9 E8 ?? ?? ?? ?? 4C 8B C3")]
+        private CanAttackDelegate? CanAttackFunction = null!;
 
         private static IntPtr InputTextPtr;
 
@@ -63,22 +66,7 @@ namespace BetterTargetingSystem
             [RequiredVersion("1.0")] CommandManager commandManager,
             Framework framework)
         {
-            this.PluginInterface = pluginInterface;
-            this.CommandManager = commandManager;
-
-            this.Configuration = this.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
-            this.Configuration.Initialize(this.PluginInterface);
-
-            Framework = framework;
-            Framework.Update += Update;
-
-            this.CommandManager.AddHandler(CommandName, new CommandInfo(ShowConfigWindow));
-
-            if (SigScanner.TryScanText(CanAttackSig, out CanAttackPtr) == false)
-            {
-                Chat.PrintError($"[{Name}]\nAn error occured, unloading plugin.");
-                throw new Exception("Failed to retrieve signature.");
-            }
+            SignatureHelper.Initialise(this);
 
             try
             {
@@ -91,11 +79,20 @@ namespace BetterTargetingSystem
                 throw new Exception("Failed to retrieve input text pointer.");
             }
 
+            this.PluginInterface = pluginInterface;
+            this.CommandManager = commandManager;
+
+            this.Configuration = this.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+            this.Configuration.Initialize(this.PluginInterface);
+
+            Framework = framework;
+            Framework.Update += Update;
+
             ConfigWindow = new ConfigWindow(this);
             WindowSystem.AddWindow(ConfigWindow);
-
             this.PluginInterface.UiBuilder.Draw += DrawUI;
             this.PluginInterface.UiBuilder.OpenConfigUi += DrawConfigUI;
+            this.CommandManager.AddHandler(CommandName, new CommandInfo(ShowConfigWindow));
         }
 
         public void Dispose()
@@ -106,25 +103,16 @@ namespace BetterTargetingSystem
             this.CommandManager.RemoveHandler(CommandName);
         }
 
-        public static void Log(string message)
-        {
-            PluginLog.Debug(message);
-        }
-        private void ShowConfigWindow(string command, string args)
-        {
-            this.DrawConfigUI();
-        }
+        public static void Log(string message) => PluginLog.Debug(message);
 
-        private void DrawUI()
-        {
-            this.WindowSystem.Draw();
-        }
+        private void ShowConfigWindow(string command, string args) => this.DrawConfigUI();
+
+        private void DrawUI() => this.WindowSystem.Draw();
 
         public void DrawConfigUI()
         {
             var window = WindowSystem.GetWindow("Better Targeting System");
-            if (window != null)
-                window.Toggle();
+            window?.Toggle();
         }
 
         private bool IsInputTextActive()
@@ -162,10 +150,7 @@ namespace BetterTargetingSystem
             }
         }
 
-        private void TargetLowestHealth()
-        {
-            TargetClosest(true);
-        }
+        private void TargetLowestHealth() => TargetClosest(true);
 
         private void TargetClosest(bool lowestHealth = false)
         {
@@ -228,7 +213,7 @@ namespace BetterTargetingSystem
             }
 
             var i = 0;
-            for(i = 0; i < _targets.Count; i++)
+            for (i = 0; i < _targets.Count; i++)
             {
                 if (this.LastTargets[i] == _currentTarget.ObjectId)
                     break;
@@ -239,10 +224,9 @@ namespace BetterTargetingSystem
             TargetManager.SetTarget(_targets.First(o => o.ObjectId == id));
         }
 
-        private unsafe bool CanAttack(DalamudGameObject obj)
+        private bool CanAttack(DalamudGameObject obj)
         {
-            // Again, no idea what it exactly does, but it works
-            return ((delegate*<long, IntPtr, long>)CanAttackPtr)(142L, obj.Address) == 1;
+            return CanAttackFunction?.Invoke(142, obj.Address) == 1;
         }
 
         internal static float DistanceToPlayer(DalamudGameObject obj)
@@ -258,11 +242,11 @@ namespace BetterTargetingSystem
             return distance;
         }
 
-        internal static bool IsInFrontOfCamera(DalamudGameObject obj, int maxAngle = 75)
+        internal static bool IsInFrontOfCamera(DalamudGameObject obj, int maxAngle)
         {
             // This is still relying on camera orientation but the cone is from the player's position
-            if (Client.LocalPlayer == null) { return false; }
-            var pPosition = Client.LocalPlayer.Position;
+            if (Client.LocalPlayer == null)
+                return false;
 
             // Gives the camera rotation in deg between -180 and 180
             var cameraRotation = CSFramework.Instance()->GetUiModule()->GetRaptureAtkModule()->AtkModule.AtkArrayDataHolder.NumberArrays[24]->IntArray[3];
@@ -274,7 +258,7 @@ namespace BetterTargetingSystem
 
             var faceVec = new Vector2((float)Math.Cos(rotation), (float)Math.Sin(rotation));
 
-            var dir = obj.Position - pPosition;
+            var dir = obj.Position - Client.LocalPlayer.Position;
             var dirVec = new Vector2(dir.Z, dir.X);
             var angle = Math.Acos(Vector2.Dot(dirVec, faceVec) / dirVec.Length() / faceVec.Length());
             return angle <= Math.PI * maxAngle / 360;
@@ -312,7 +296,8 @@ namespace BetterTargetingSystem
             return isLoSBlocked == false;
         }
 
-        unsafe private (List<DalamudGameObject>, List<DalamudGameObject>, List<DalamudGameObject>, List<DalamudGameObject>) GetTargets()
+        public record ObjectsList(List<DalamudGameObject> Targets, List<DalamudGameObject> CloseTargets, List<DalamudGameObject> TargetsEnemy, List<DalamudGameObject> OnScreenTargets);
+        private ObjectsList GetTargets()
         {
             /* Always return 4 lists.
              * The enemies in a cone in front of the player
@@ -326,7 +311,7 @@ namespace BetterTargetingSystem
             var OnScreenTargetsList = new List<DalamudGameObject>();
 
             if (Client.LocalPlayer == null)
-                return (TargetsList, CloseTargetsList, TargetsEnemyList, OnScreenTargetsList);
+                return new ObjectsList(TargetsList, CloseTargetsList, TargetsEnemyList, OnScreenTargetsList);
 
             // There might be a way to store this and just update the values if they actually change
             var device = Device.Instance();
@@ -348,59 +333,69 @@ namespace BetterTargetingSystem
                 if (EnemyList.Contains(obj.ObjectId))
                     TargetsEnemyList.Add(obj);
 
-                GameObject* o = (GameObject*)obj.Address;
+                var o = (GameObject*)obj.Address;
                 if (o == null) continue;
 
                 if (o->GetIsTargetable() == false) continue;
 
+                // If the object is part of another party's treasure hunt, we ignore it
+                if (o->EventId.Type == EventHandlerType.TreasureHuntDirector && o->NamePlateIconId != 60094) continue;
+
+                var distance = DistanceToPlayer(obj);
+
+                // This is a bit less than the max distance to target something the vanilla way
+                if (distance > 49) continue;
+
                 /*
                  * Check if object is visible on screen or not.
-                 * This isn't exactly correct but since I couldn't find how to get the "bounding box"
-                 * of a game object or the dimensions of its model, this will have to do.
+                 * Using both WorldToScreenPoint and WorldToScreen because
+                 *  - the former is more accurate for actual X,Y position on screen
+                 *  - the latter returns whether or not the object is "in front" of the camera
+                 * This isn't exactly how I'd like to do it but since I couldn't find how to get
+                 * the "bounding box" of a game object or the dimensions of its model, this will have to do.
                  */
                 var screenPos = FFXIVClientStructs.FFXIV.Client.Graphics.Scene.Camera.WorldToScreenPoint(o->Position);
                 if (screenPos.X < 0
                     || screenPos.X > deviceWidth
                     || screenPos.Y < 0
                     || screenPos.Y > deviceHeight) continue;
+                if (GameGui.WorldToScreen(o->Position, out _) == false) continue;
 
-                var distance = DistanceToPlayer(obj);
-                // This is a bit less than the max distance to target something the vanilla way
-                if (distance > 50) continue;
-
+                // Check actual line of sight from camera to object (blocked by walls, etc)
                 if (IsInLineOfSight(o, true) == false) continue;
 
                 // On screen and in light of sight of the camera, adding it to the On Screen list
                 OnScreenTargetsList.Add(obj);
 
+                // Further than 40y, don't care about targeting it
                 if (distance > 40) continue;
 
-                if (distance > 15 && IsInFrontOfCamera(obj, 75) == false) continue;
-
-                if (distance > 5 && IsInFrontOfCamera(obj, 90) == false) continue;
-
-                if (distance <= 5)
-                {
+                // Default cone angle for very close targets, getting wider the closer the target is
+                var angle = 140;
+                if (distance > 15)
+                    angle = 75;
+                else if (distance > 5)
+                    angle = 90;
+                else
                     // Close to the player, adding it to the Close targets list
                     CloseTargetsList.Add(obj);
 
-                    if (IsInFrontOfCamera(obj, 140) == false) continue;
-                }
+                if (IsInFrontOfCamera(obj, angle) == false) continue;
 
                 // In front of the player, adding it to the default list
                 TargetsList.Add(obj);
             }
 
-            return (TargetsList, CloseTargetsList, TargetsEnemyList, OnScreenTargetsList);
+            return new ObjectsList(TargetsList, CloseTargetsList, TargetsEnemyList, OnScreenTargetsList);
         }
 
-        private static unsafe uint[] GetEnemyList()
+        private static uint[] GetEnemyList()
         {
             var addonByName = GameGui.GetAddonByName("_EnemyList", 1);
             if (addonByName == IntPtr.Zero)
             {
                 Log("EnemyList not found!");
-                return new uint[0];
+                return Array.Empty<uint>();
             }
 
             var addon = (AddonEnemyList*)addonByName;
@@ -409,7 +404,7 @@ namespace BetterTargetingSystem
             var list = new List<uint>(addon->EnemyCount);
             for (var i = 0; i < addon->EnemyCount; i++)
             {
-                var id = (uint)numArray->IntArray[8 + i * 6];
+                var id = (uint)numArray->IntArray[8 + (i * 6)];
                 list.Add(id);
             }
             return list.ToArray();
