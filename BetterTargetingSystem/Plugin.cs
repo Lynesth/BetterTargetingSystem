@@ -8,6 +8,7 @@ using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
 using Dalamud.Logging;
 using Dalamud.Plugin;
+using Dalamud.Utility.Signatures;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -25,14 +26,14 @@ using ObjectKind = Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
 using GameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 using CameraManager = FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CameraManager;
 using CSFramework = FFXIVClientStructs.FFXIV.Client.System.Framework.Framework;
-using Dalamud.Utility.Signatures;
 
 namespace BetterTargetingSystem;
 
 public sealed unsafe class Plugin : IDalamudPlugin
 {
     public string Name => "Better Targeting System";
-    public string CommandName => "/bts";
+    public string CommandConfig => "/bts";
+    public string CommandHelp => "/btshelp";
 
     public List<uint> LastTargets { get; private set; } = new List<uint>();
 
@@ -49,9 +50,9 @@ public sealed unsafe class Plugin : IDalamudPlugin
     [PluginService] private static ChatGui Chat { get; set; } = null!;
     [PluginService] private static GameGui GameGui { get; set; } = null!;
     [PluginService] internal static KeyState KeyState { get; set; } = null!;
-    [PluginService] private static SigScanner SigScanner { get; set; } = null!;
 
     private ConfigWindow ConfigWindow { get; init; }
+    private HelpWindow HelpWindow { get; init; }
 
     // Shamelessly stolen, not sure what that game function exactly does but it works
     private delegate nint CanAttackDelegate(nint a1, nint objectAddress);
@@ -89,9 +90,14 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
         ConfigWindow = new ConfigWindow(this);
         WindowSystem.AddWindow(ConfigWindow);
+        HelpWindow = new HelpWindow(this);
+        WindowSystem.AddWindow(HelpWindow);
         this.PluginInterface.UiBuilder.Draw += DrawUI;
         this.PluginInterface.UiBuilder.OpenConfigUi += DrawConfigUI;
-        this.CommandManager.AddHandler(CommandName, new CommandInfo(ShowConfigWindow));
+        this.CommandManager.AddHandler(CommandConfig, new CommandInfo(ShowConfigWindow)
+            { HelpMessage = "Open the configuration window." });
+        this.CommandManager.AddHandler(CommandHelp, new CommandInfo(ShowHelpWindow)
+            { HelpMessage = "What does this plugin do?" });
     }
 
     public void Dispose()
@@ -99,20 +105,16 @@ public sealed unsafe class Plugin : IDalamudPlugin
         Framework.Update -= Update;
         this.WindowSystem.RemoveAllWindows();
         ConfigWindow.Dispose();
-        this.CommandManager.RemoveHandler(CommandName);
+        this.CommandManager.RemoveHandler(CommandConfig);
+        this.CommandManager.RemoveHandler(CommandHelp);
     }
 
     public static void Log(string message) => PluginLog.Debug(message);
 
     private void ShowConfigWindow(string command, string args) => this.DrawConfigUI();
-
+    private void ShowHelpWindow(string command, string args) => WindowSystem.GetWindow("Better Targeting System - Help")?.Toggle();
     private void DrawUI() => this.WindowSystem.Draw();
-
-    public void DrawConfigUI()
-    {
-        var window = WindowSystem.GetWindow("Better Targeting System");
-        window?.Toggle();
-    }
+    public void DrawConfigUI() => WindowSystem.GetWindow("Better Targeting System")?.Toggle();
 
     private bool IsInputTextActive()
     {
@@ -280,9 +282,6 @@ public sealed unsafe class Plugin : IDalamudPlugin
             sourcePos.Y += 2;
         }
 
-        var hit = stackalloc RaycastHit[1];
-        var flags = stackalloc int[] { 0x4000, 0x4000 };
-
         var targetPos = target->Position;
         targetPos.Y += 2;
 
@@ -290,7 +289,10 @@ public sealed unsafe class Plugin : IDalamudPlugin
         var distance = direction.Magnitude;
 
         direction = direction.Normalized;
-        var isLoSBlocked = CSFramework.Instance()->BGCollisionModule->RaycastEx(hit, sourcePos, direction, distance, 1, flags);
+
+        RaycastHit hit;
+        var flags = stackalloc int[] { 0x4000, 0, 0x4000, 0 };
+        var isLoSBlocked = CSFramework.Instance()->BGCollisionModule->RaycastEx(&hit, sourcePos, direction, distance, 1, flags);
 
         return isLoSBlocked == false;
     }
@@ -299,11 +301,11 @@ public sealed unsafe class Plugin : IDalamudPlugin
     private ObjectsList GetTargets()
     {
         /* Always return 4 lists.
-            * The enemies in a cone in front of the player
-            * The enemies in a close radius around the player
-            * The enemies in the Enemy List Addon
-            * All the targets on screen
-            */
+         * The enemies in a cone in front of the player
+         * The enemies in a close radius around the player
+         * The enemies in the Enemy List Addon
+         * All the targets on screen
+         */
         var TargetsList = new List<DalamudGameObject>();
         var CloseTargetsList = new List<DalamudGameObject>();
         var TargetsEnemyList = new List<DalamudGameObject>();
@@ -349,13 +351,13 @@ public sealed unsafe class Plugin : IDalamudPlugin
             if (distance > 49) continue;
 
             /*
-                * Check if object is visible on screen or not.
-                * Using both WorldToScreenPoint and WorldToScreen because
-                *  - the former is more accurate for actual X,Y position on screen
-                *  - the latter returns whether or not the object is "in front" of the camera
-                * This isn't exactly how I'd like to do it but since I couldn't find how to get
-                * the "bounding box" of a game object or the dimensions of its model, this will have to do.
-                */
+             * Check if object is visible on screen or not.
+             * Using both WorldToScreenPoint and WorldToScreen because
+             *  - the former is more accurate for actual X,Y position on screen
+             *  - the latter returns whether or not the object is "in front" of the camera
+             * This isn't exactly how I'd like to do it but since I couldn't find how to get
+             * the "bounding box" of a game object or the dimensions of its model, this will have to do.
+             */
             var screenPos = FFXIVClientStructs.FFXIV.Client.Graphics.Scene.Camera.WorldToScreenPoint(o->Position);
             if (screenPos.X < 0
                 || screenPos.X > deviceWidth
@@ -395,10 +397,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
     {
         var addonByName = GameGui.GetAddonByName("_EnemyList", 1);
         if (addonByName == IntPtr.Zero)
-        {
-            Log("EnemyList not found!");
             return Array.Empty<uint>();
-        }
 
         var addon = (AddonEnemyList*)addonByName;
         var rap = CSFramework.Instance()->GetUiModule()->GetRaptureAtkModule();
