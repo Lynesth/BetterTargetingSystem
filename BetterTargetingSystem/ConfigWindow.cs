@@ -22,11 +22,10 @@ namespace BetterTargetingSystem.Windows
 
         public ConfigWindow(Plugin plugin) : base(
             "Better Targeting System",
-            ImGuiWindowFlags.NoResize | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoScrollbar |
-            ImGuiWindowFlags.NoScrollWithMouse)
+            ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoCollapse | ImGuiWindowFlags.NoScrollbar | ImGuiWindowFlags.NoScrollWithMouse)
         {
             this.Size = new Vector2(185, 270);
-            this.SizeCondition = ImGuiCond.Always;
+            this.SizeCondition = ImGuiCond.Appearing;
 
             this.Configuration = plugin.Configuration;
 
@@ -55,12 +54,12 @@ namespace BetterTargetingSystem.Windows
                 : (this.Configuration.LowestHealthTargetKeybind.Key != null ? this.Configuration.LowestHealthTargetKeybind.ToString() : "None");
 
             ImGui.Text("Keybinds Configuration:\n\n");
-
             ImGui.PushItemWidth(170);
             ImGui.Text("[Cycle Targets]");
             ImGui.InputText($"##ttk_Keybind", ref tabTargetKeybind, 200, ImGuiInputTextFlags.ReadOnly);
             if (ImGui.IsItemActive())
             {
+                ImGui.SetTooltip("Use Backspace to remove keybind");
                 this.ModifyingKeybindTTK = true;
                 // Prevent trying to set Alt-Tab as a keybind
                 if (this.CurrentKeys.Key != null && (this.CurrentKeys.Key != VirtualKey.TAB || this.CurrentKeys.AltModifier == false))
@@ -87,6 +86,7 @@ namespace BetterTargetingSystem.Windows
             ImGui.InputText($"##ctk_Keybind", ref closestTargetKeybind, 200, ImGuiInputTextFlags.ReadOnly);
             if (ImGui.IsItemActive())
             {
+                ImGui.SetTooltip("Use Backspace to remove keybind");
                 this.ModifyingKeybindCTK = true;
                 // Prevent trying to set Alt-Tab as a keybind
                 if (this.CurrentKeys.Key != null && (this.CurrentKeys.Key != VirtualKey.TAB || this.CurrentKeys.AltModifier == false))
@@ -113,6 +113,7 @@ namespace BetterTargetingSystem.Windows
             ImGui.InputText($"##lhtk_Keybind", ref lowestHealthTargetKeybind, 200, ImGuiInputTextFlags.ReadOnly);
             if (ImGui.IsItemActive())
             {
+                ImGui.SetTooltip("Use Backspace to remove keybind");
                 this.ModifyingKeybindLHTK = true;
                 // Prevent trying to set Alt-Tab as a keybind
                 if (this.CurrentKeys.Key != null && (this.CurrentKeys.Key != VirtualKey.TAB || this.CurrentKeys.AltModifier == false))
