@@ -1,10 +1,11 @@
 {
-  "Author": "Lynesth",
-  "Name": "Better Targeting System",
-  "Punchline": "A more intelligent targeting system for the game.",
-  "Description": "",
-  "InternalName": "BetterTargetingSystem",
-  "ApplicableVersion": "any",
+    "Author": "Lynesth",
+    "Name": "Better Targeting System",
+    "Punchline": "A more intelligent targeting system for the game.",
+    "Description": "",
+    "InternalName": "BetterTargetingSystem",
+    "ApplicableVersion": "any",
+    "IconUrl": "https://github.com/LeonBlade/BDTHPlugin/raw/main/icon.png",
     "Tags": [
         "Tab",
         "Target",

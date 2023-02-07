@@ -29,7 +29,7 @@ public class HelpWindow : Window, IDisposable
         ImGui.Text("- If there are still no enemies, it will then just default to any available target visible on your screen.");
         ImGui.Unindent();
         ImGui.Text("\nThe plugin will not target enemies you cannot interact with, such as those in another party's levequest / treasure hunt.");
-        ImGui.Text("It also adds an extra keybind to target the lowest (absolute) health enemy on screen.");
+        ImGui.Text("It also adds an extra keybind to target the lowest (absolute) health enemy as well as a keybind to target the \"best\" enemy for targeted aoes.");
         ImGui.Text("And lastly, it tries to not change the order in which enemies are cycled through (to be improved).");
         ImGui.Text("\n\nDo not hesitate to give feedback/suggestion and submit bug reports on the Github repository.");
     }
