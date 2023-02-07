@@ -20,7 +20,7 @@ public class HelpWindow : Window, IDisposable
     public override void Draw()
     {
         ImGui.PushTextWrapPos(500);
-        ImGui.Text("Better Targeting System is a plugin that tries to improve the way Tab targeting works. Instead of relying on a single cone from your character, it uses different cone sizes depending on the distance.");
+        ImGui.Text("Better Targeting System is a plugin that tries to improve the way Tab targeting works. It uses cones of different sizes depending on distance to identify which targets can be acquired.");
         ImGui.Text("\nHere's what it does when you press the [Cycle Targets] keybind:");
         ImGui.Indent();
         ImGui.Text("- It first tries to target an enemy in front of your character in the direction your camera is facing (as explained above).");
