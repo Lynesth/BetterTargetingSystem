@@ -19,6 +19,7 @@ namespace BetterTargetingSystem.Windows
         private bool ModifyingKeybindTTK = false;
         private bool ModifyingKeybindCTK = false;
         private bool ModifyingKeybindLHTK = false;
+        private bool ModifyingKeybindBAOETK = false;
 
         public ConfigWindow(Plugin plugin) : base(
             "Better Targeting System",
@@ -40,7 +41,7 @@ namespace BetterTargetingSystem.Windows
 
         public override void Draw()
         {
-            if (this.ModifyingKeybindTTK || this.ModifyingKeybindCTK || this.ModifyingKeybindLHTK)
+            if (this.ModifyingKeybindTTK || this.ModifyingKeybindCTK || this.ModifyingKeybindLHTK || this.ModifyingKeybindBAOETK)
                 this.CurrentKeys = GetKeys();
 
             var tabTargetKeybind = this.ModifyingKeybindTTK
@@ -52,6 +53,9 @@ namespace BetterTargetingSystem.Windows
             var lowestHealthTargetKeybind = this.ModifyingKeybindLHTK
                 ? this.CurrentKeys.ToString()
                 : (this.Configuration.LowestHealthTargetKeybind.Key != null ? this.Configuration.LowestHealthTargetKeybind.ToString() : "None");
+            var bestAOETargetKeybind = this.ModifyingKeybindBAOETK
+                ? this.CurrentKeys.ToString()
+                : (this.Configuration.BestAOETargetKeybind.Key != null ? this.Configuration.BestAOETargetKeybind.ToString() : "None");
 
             ImGui.Text("Keybinds Configuration:\n\n");
             ImGui.PushItemWidth(170);
@@ -133,6 +137,33 @@ namespace BetterTargetingSystem.Windows
             {
                 this.ModifyingKeybindLHTK = false;
             }
+
+            ImGui.Text("\n");
+
+            ImGui.Text("[Best AOE Target]");
+            ImGui.InputText($"##baoetk_Keybind", ref bestAOETargetKeybind, 200, ImGuiInputTextFlags.ReadOnly);
+            if (ImGui.IsItemActive())
+            {
+                ImGui.SetTooltip("Use Backspace to remove keybind");
+                this.ModifyingKeybindBAOETK = true;
+                // Prevent trying to set Alt-Tab as a keybind
+                if (this.CurrentKeys.Key != null && (this.CurrentKeys.Key != VirtualKey.TAB || this.CurrentKeys.AltModifier == false))
+                {
+                    this.Configuration.BestAOETargetKeybind = this.CurrentKeys;
+                    this.Configuration.Save();
+                    UnfocusInput();
+                }
+                else if (ImGui.IsKeyPressed(ImGuiKey.Backspace))
+                {
+                    this.Configuration.BestAOETargetKeybind = new Keybind(null, false, false, false);
+                    this.Configuration.Save();
+                    UnfocusInput();
+                }
+            }
+            else
+            {
+                this.ModifyingKeybindBAOETK = false;
+            }
         }
 
         private void UnfocusInput()
@@ -140,6 +171,7 @@ namespace BetterTargetingSystem.Windows
             this.ModifyingKeybindTTK = false;
             this.ModifyingKeybindCTK = false;
             this.ModifyingKeybindLHTK = false;
+            this.ModifyingKeybindBAOETK = false;
             this.CurrentKeys = new Keybind(null, false, false, false);
             ImGui.SetWindowFocus(null); // unfocus window to clear keyboard focus
             ImGui.SetWindowFocus(); // refocus window

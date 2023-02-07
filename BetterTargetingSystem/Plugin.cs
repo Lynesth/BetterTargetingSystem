@@ -2,6 +2,7 @@ using Dalamud.Game;
 using Dalamud.Game.ClientState;
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Game.ClientState.Objects;
+using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.Command;
 using Dalamud.Game.Gui;
 using Dalamud.Interface.Windowing;
@@ -10,6 +11,7 @@ using Dalamud.Logging;
 using Dalamud.Plugin;
 using Dalamud.Utility.Signatures;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
+using FFXIVClientStructs.FFXIV.Client.Game.Group;
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Common.Component.BGCollision;
@@ -134,6 +136,13 @@ public sealed unsafe class Plugin : IDalamudPlugin
             TargetLowestHealth();
             return;
         }
+
+        if (Configuration.BestAOETargetKeybind.IsPressed())
+        {
+            KeyState[(int)Configuration.BestAOETargetKeybind.Key!] = false;
+            TargetBestAOE();
+            return;
+        }
     }
 
     private void TargetLowestHealth() => TargetClosest(true);
@@ -154,6 +163,58 @@ public sealed unsafe class Plugin : IDalamudPlugin
         var _target = lowestHealth
             ? _targets.OrderBy(o => (o as DalamudCharacter)?.CurrentHp).ThenBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).First()
             : _targets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).First();
+
+        TargetManager.SetTarget(_target);
+    }
+
+    private class AOETarget
+    {
+        public DalamudGameObject obj;
+        public int inRange = 0;
+        public AOETarget(DalamudGameObject obj) => this.obj = obj;
+    }
+    private void TargetBestAOE()
+    {
+        if (Client.LocalPlayer == null)
+            return;
+
+        var (Targets, CloseTargets, EnemyListTargets, OnScreenTargets) = GetTargets();
+
+        if (OnScreenTargets.Count == 0)
+            return;
+
+        var groupManager = GroupManager.Instance();
+        if (groupManager != null)
+        {
+            EnemyListTargets.AddRange(OnScreenTargets.Where(o =>
+                EnemyListTargets.Contains(o) == false
+                && ((o as DalamudCharacter)?.StatusFlags & StatusFlags.InCombat) != 0
+                && groupManager->IsObjectIDInParty((uint)o.TargetObjectId)
+            ));
+        }
+
+        if (EnemyListTargets.Count == 0)
+            return;
+
+        var AOETargetsList = new List<AOETarget>();
+        foreach(var enemy in EnemyListTargets)
+        {
+            var AOETarget = new AOETarget(enemy);
+            foreach (var other in EnemyListTargets)
+            {
+                if (other == enemy) continue;
+                if (DistanceBetweenObjects(enemy, other) > 5) continue;
+                AOETarget.inRange += 1;
+            }
+            AOETargetsList.Add(AOETarget);
+        }
+
+        var _targets = AOETargetsList.Where(o => OnScreenTargets.Contains(o.obj)).ToList();
+
+        if (_targets.Count == 0)
+            return;
+
+        var _target = _targets.OrderByDescending(o => o.inRange).ThenByDescending(o => (o.obj as DalamudCharacter)?.CurrentHp).First().obj;
 
         TargetManager.SetTarget(_target);
     }
