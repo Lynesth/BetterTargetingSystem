@@ -5,5 +5,9 @@
   "Description": "",
   "InternalName": "BetterTargetingSystem",
   "ApplicableVersion": "any",
-  "Tags": []
+    "Tags": [
+        "Tab",
+        "Target",
+        "Targeting"
+    ]
 }
