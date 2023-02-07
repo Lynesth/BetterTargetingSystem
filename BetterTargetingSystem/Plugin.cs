@@ -13,7 +13,6 @@ using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Common.Component.BGCollision;
-using FFXIVClientStructs.FFXIV.Component.GUI;
 using BetterTargetingSystem.Windows;
 using System;
 using System.Collections.Generic;
@@ -45,7 +44,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
     public WindowSystem WindowSystem = new("BetterTargetingSystem");
 
     [PluginService] private static ClientState Client { get; set; } = null!;
-    [PluginService] private static ObjectTable Objects { get; set; } = null!;
+    [PluginService] private static ObjectTable ObjectTable { get; set; } = null!;
     [PluginService] private static TargetManager TargetManager { get; set; } = null!;
     [PluginService] private static ChatGui Chat { get; set; } = null!;
     [PluginService] private static GameGui GameGui { get; set; } = null!;
@@ -59,25 +58,12 @@ public sealed unsafe class Plugin : IDalamudPlugin
     [Signature("48 89 5C 24 ?? 57 48 83 EC 20 48 8B DA 8B F9 E8 ?? ?? ?? ?? 4C 8B C3")]
     private CanAttackDelegate? CanAttackFunction = null!;
 
-    private static IntPtr InputTextPtr;
-
     public Plugin(
         [RequiredVersion("1.0")] DalamudPluginInterface pluginInterface,
         [RequiredVersion("1.0")] CommandManager commandManager,
         Framework framework)
     {
         SignatureHelper.Initialise(this);
-
-        try
-        {
-            // Stolen from TPie
-            InputTextPtr = *(IntPtr*)((IntPtr)AtkStage.GetSingleton() + 0x28) + 0x188E;
-        }
-        catch (Exception)
-        {
-            Chat.PrintError($"[{Name}]\nAn error occured, unloading plugin.");
-            throw new Exception("Failed to retrieve input text pointer.");
-        }
 
         this.PluginInterface = pluginInterface;
         this.CommandManager = commandManager;
@@ -116,17 +102,15 @@ public sealed unsafe class Plugin : IDalamudPlugin
     private void DrawUI() => this.WindowSystem.Draw();
     public void DrawConfigUI() => WindowSystem.GetWindow("Better Targeting System")?.Toggle();
 
-    private bool IsInputTextActive()
-    {
-        return InputTextPtr != IntPtr.Zero && *(bool*)InputTextPtr;
-    }
+    private RaptureAtkModule* RaptureAtkModule => CSFramework.Instance()->GetUiModule()->GetRaptureAtkModule();
+    private bool IsTextInputActive => RaptureAtkModule->AtkModule.IsTextInputActive();
 
     public void Update(Framework framework)
     {
         if (Client.IsLoggedIn == false)
             return;
 
-        if (IsInputTextActive())
+        if (IsTextInputActive)
             return;
 
         if (Configuration.TabTargetKeybind.IsPressed())
@@ -155,6 +139,9 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
     private void TargetClosest(bool lowestHealth = false)
     {
+        if (Client.LocalPlayer == null)
+            return;
+
         var (Targets, CloseTargets, EnemyListTargets, OnScreenTargets) = GetTargets();
 
         // All objects in Targets and CloseTargets are in OnScreenTargets so it's not necessary to test them
@@ -164,14 +151,17 @@ public sealed unsafe class Plugin : IDalamudPlugin
         var _targets = OnScreenTargets.Count > 0 ? OnScreenTargets : EnemyListTargets;
 
         var _target = lowestHealth
-            ? _targets.OrderBy(o => (o as DalamudCharacter)?.CurrentHp).ThenBy(DistanceToPlayer).First()
-            : _targets.OrderBy(DistanceToPlayer).First();
+            ? _targets.OrderBy(o => (o as DalamudCharacter)?.CurrentHp).ThenBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).First()
+            : _targets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).First();
 
         TargetManager.SetTarget(_target);
     }
 
     private void NextTarget()
     {
+        if (Client.LocalPlayer == null)
+            return;
+
         var (Targets, CloseTargets, EnemyListTargets, OnScreenTargets) = GetTargets();
 
         // All objects in Targets and CloseTargets are in OnScreenTargets so it's not necessary to test them
@@ -201,7 +191,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         var _currentTarget = TargetManager.Target;
         if (_currentTarget == null)
         {
-            _targets = _targets.OrderBy(DistanceToPlayer).ToList();
+            _targets = _targets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).ToList();
             this.LastTargets = _targets.Select(o => o.ObjectId).ToList();
             TargetManager.SetTarget(_targets[0]);
             return;
@@ -209,7 +199,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
         if (this.LastTargets.ToHashSet().SetEquals(_targets.Select(o => o.ObjectId).ToHashSet()) == false)
         {
-            _targets = _targets.OrderBy(DistanceToPlayer).ToList();
+            _targets = _targets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).ToList();
             this.LastTargets = _targets.Select(o => o.ObjectId).ToList();
         }
 
@@ -230,27 +220,24 @@ public sealed unsafe class Plugin : IDalamudPlugin
         return CanAttackFunction?.Invoke(142, obj.Address) == 1;
     }
 
-    internal static float DistanceToPlayer(DalamudGameObject obj)
+    internal float DistanceBetweenObjects(DalamudGameObject source, DalamudGameObject target)
     {
-        if (Client.LocalPlayer == null)
-            return 0;
-
         // Might have to tinker a bit whether or not to include hitbox radius in calculation
-        // Keeping the player hitbox radius outside of the calculation for now
-        var distance = Vector3.Distance(Client.LocalPlayer.Position, obj.Position);
-        //distance -= Client.LocalPlayer.HitboxRadius;
-        distance -= obj.HitboxRadius;
+        // Keeping the source object hitbox radius outside of the calculation for now
+        var distance = Vector3.Distance(source.Position, target.Position);
+        //distance -= source.HitboxRadius;
+        distance -= target.HitboxRadius;
         return distance;
     }
 
-    internal static bool IsInFrontOfCamera(DalamudGameObject obj, int maxAngle)
+    internal bool IsInFrontOfCamera(DalamudGameObject obj, int maxAngle)
     {
         // This is still relying on camera orientation but the cone is from the player's position
         if (Client.LocalPlayer == null)
             return false;
 
         // Gives the camera rotation in deg between -180 and 180
-        var cameraRotation = CSFramework.Instance()->GetUiModule()->GetRaptureAtkModule()->AtkModule.AtkArrayDataHolder.NumberArrays[24]->IntArray[3];
+        var cameraRotation = RaptureAtkModule->AtkModule.AtkArrayDataHolder.NumberArrays[24]->IntArray[3];
 
         // Transform the [-180,180] rotation to rad with same 0 as a GameObject rotation
         // There might be an easier way to do that, but geometry and I aren't friends
@@ -320,7 +307,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         float deviceWidth = device->Width;
         float deviceHeight = device->Height;
 
-        var PotentialTargets = Objects.Where(
+        var PotentialTargets = ObjectTable.Where(
             o => (ObjectKind.BattleNpc.Equals(o.ObjectKind)
                 || ObjectKind.Player.Equals(o.ObjectKind))
             && o != Client.LocalPlayer
@@ -345,7 +332,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
                 && o->EventId.Id != Player->EventId.Id)
                 continue;
 
-            var distance = DistanceToPlayer(obj);
+            var distance = DistanceBetweenObjects(Client.LocalPlayer!, obj);
 
             // This is a bit less than the max distance to target something the vanilla way
             if (distance > 49) continue;
@@ -393,15 +380,14 @@ public sealed unsafe class Plugin : IDalamudPlugin
         return new ObjectsList(TargetsList, CloseTargetsList, TargetsEnemyList, OnScreenTargetsList);
     }
 
-    private static uint[] GetEnemyList()
+    private uint[] GetEnemyList()
     {
         var addonByName = GameGui.GetAddonByName("_EnemyList", 1);
         if (addonByName == IntPtr.Zero)
             return Array.Empty<uint>();
 
         var addon = (AddonEnemyList*)addonByName;
-        var rap = CSFramework.Instance()->GetUiModule()->GetRaptureAtkModule();
-        var numArray = rap->AtkModule.AtkArrayDataHolder.NumberArrays[21];
+        var numArray = RaptureAtkModule->AtkModule.AtkArrayDataHolder.NumberArrays[21];
         var list = new List<uint>(addon->EnemyCount);
         for (var i = 0; i < addon->EnemyCount; i++)
         {
