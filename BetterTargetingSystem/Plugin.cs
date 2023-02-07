@@ -91,6 +91,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         Framework.Update -= Update;
         this.WindowSystem.RemoveAllWindows();
         ConfigWindow.Dispose();
+        HelpWindow.Dispose();
         this.CommandManager.RemoveHandler(CommandConfig);
         this.CommandManager.RemoveHandler(CommandHelp);
     }
@@ -98,9 +99,9 @@ public sealed unsafe class Plugin : IDalamudPlugin
     public static void Log(string message) => PluginLog.Debug(message);
 
     private void ShowConfigWindow(string command, string args) => this.DrawConfigUI();
-    private void ShowHelpWindow(string command, string args) => WindowSystem.GetWindow("Better Targeting System - Help")?.Toggle();
+    private void ShowHelpWindow(string command, string args) => HelpWindow.Toggle();
     private void DrawUI() => this.WindowSystem.Draw();
-    public void DrawConfigUI() => WindowSystem.GetWindow("Better Targeting System")?.Toggle();
+    public void DrawConfigUI() => ConfigWindow.Toggle();
 
     private RaptureAtkModule* RaptureAtkModule => CSFramework.Instance()->GetUiModule()->GetRaptureAtkModule();
     private bool IsTextInputActive => RaptureAtkModule->AtkModule.IsTextInputActive();
