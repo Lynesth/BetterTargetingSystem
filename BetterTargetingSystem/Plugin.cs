@@ -56,9 +56,18 @@ public sealed unsafe class Plugin : IDalamudPlugin
     private HelpWindow HelpWindow { get; init; }
 
     // Shamelessly stolen, not sure what that game function exactly does but it works
-    private delegate nint CanAttackDelegate(nint a1, nint objectAddress);
     [Signature("48 89 5C 24 ?? 57 48 83 EC 20 48 8B DA 8B F9 E8 ?? ?? ?? ?? 4C 8B C3")]
     private CanAttackDelegate? CanAttackFunction = null!;
+    private delegate nint CanAttackDelegate(nint a1, nint objectAddress);
+
+    public static nint InputData;
+    [Signature("E8 ?? ?? ?? ?? 80 BB A2 00 00 00 00")]
+    internal static GetInputDataDelegate? GetInputData = null!;
+    internal delegate nint GetInputDataDelegate(CSFramework* framework);
+
+    [Signature("E9 ?? ?? ?? ?? 83 7F 44 02")]
+    internal static IsInputPressedDelegate? IsInputPressed = null!;
+    internal delegate bool IsInputPressedDelegate(nint a1, int a2);
 
     public Plugin(
         [RequiredVersion("1.0")] DalamudPluginInterface pluginInterface,
@@ -113,33 +122,36 @@ public sealed unsafe class Plugin : IDalamudPlugin
         if (Client.IsLoggedIn == false)
             return;
 
-        if (IsTextInputActive)
+        if (IsTextInputActive || ImGuiNET.ImGui.GetIO().WantCaptureKeyboard)
             return;
+
+        Keybinds.Keybind.GetKeyboardState();
 
         if (Configuration.TabTargetKeybind.IsPressed())
         {
-            KeyState[(int)Configuration.TabTargetKeybind.Key!] = false;
+            try { KeyState[(int)Configuration.TabTargetKeybind.Key!] = false; } catch { }
             NextTarget();
             return;
         }
 
         if (Configuration.ClosestTargetKeybind.IsPressed())
         {
-            KeyState[(int)Configuration.ClosestTargetKeybind.Key!] = false;
+
+            try { KeyState[(int)Configuration.ClosestTargetKeybind.Key!] = false; } catch { }
             TargetClosest();
             return;
         }
 
         if (Configuration.LowestHealthTargetKeybind.IsPressed())
         {
-            KeyState[(int)Configuration.LowestHealthTargetKeybind.Key!] = false;
+            try { KeyState[(int)Configuration.LowestHealthTargetKeybind.Key!] = false; } catch { }
             TargetLowestHealth();
             return;
         }
 
         if (Configuration.BestAOETargetKeybind.IsPressed())
         {
-            KeyState[(int)Configuration.BestAOETargetKeybind.Key!] = false;
+            try { KeyState[(int)Configuration.BestAOETargetKeybind.Key!] = false; } catch { }
             TargetBestAOE();
             return;
         }

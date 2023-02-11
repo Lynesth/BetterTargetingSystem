@@ -1,10 +1,7 @@
 using Dalamud.Game.ClientState.Keys;
-using Dalamud.Interface;
 using Dalamud.Interface.Windowing;
 using ImGuiNET;
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 
 using BetterTargetingSystem.Keybinds;
@@ -30,10 +27,6 @@ namespace BetterTargetingSystem.Windows
 
             this.Configuration = plugin.Configuration;
 
-            // Just making sure we're not using unallowed keys even after an update
-            var ValidVirtualKeys = Plugin.KeyState.GetValidVirtualKeys();
-            SupportedKeys.RemoveAll(key => ValidVirtualKeys.Contains(ImGuiHelpers.ImGuiKeyToVirtualKey(key)) == false);
-
             this.CurrentKeys = new Keybind(null, false, false, false);
         }
 
@@ -45,8 +38,8 @@ namespace BetterTargetingSystem.Windows
                 this.CurrentKeys = GetKeys();
 
             var tabTargetKeybind = this.ModifyingKeybindTTK
-                ? this.CurrentKeys.ToString() :
-                (this.Configuration.TabTargetKeybind.Key != null ? this.Configuration.TabTargetKeybind.ToString() : "None");
+                ? this.CurrentKeys.ToString()
+                : (this.Configuration.TabTargetKeybind.Key != null ? this.Configuration.TabTargetKeybind.ToString() : "None");
             var closestTargetKeybind = this.ModifyingKeybindCTK
                 ? this.CurrentKeys.ToString()
                 : (this.Configuration.ClosestTargetKeybind.Key != null ? this.Configuration.ClosestTargetKeybind.ToString() : "None");
@@ -184,106 +177,20 @@ namespace BetterTargetingSystem.Windows
             var ctrl = io.KeyCtrl;
             var shift = io.KeyShift;
             var alt = io.KeyAlt;
-            foreach (var k in SupportedKeys)
+
+            if (ImGui.IsKeyPressed(ImGuiKey.Tab))
+                return new Keybind(VirtualKey.TAB, ctrl, shift, alt);
+
+            Keybind.GetKeyboardState();
+            foreach (var k in Keybind.SupportedKeys)
             {
-                if (ImGui.IsKeyPressed(k))
+                if (Keybind.IsKeyDown((int) k))
                 {
-                    key = ImGuiHelpers.ImGuiKeyToVirtualKey(k);
+                    key = k;
                     break;
                 }
             }
             return new Keybind(key, ctrl, shift, alt);
         }
-
-        private static List<ImGuiKey> SupportedKeys = new List<ImGuiKey>()
-        {
-            ImGuiKey.Tab,
-            ImGuiKey.CapsLock,
-            ImGuiKey.Space,
-            ImGuiKey.End,
-            ImGuiKey.Home,
-            ImGuiKey.LeftArrow,
-            ImGuiKey.UpArrow,
-            ImGuiKey.RightArrow,
-            ImGuiKey.DownArrow,
-            ImGuiKey.Insert,
-            ImGuiKey.Delete,
-            ImGuiKey._0,
-            ImGuiKey._1,
-            ImGuiKey._2,
-            ImGuiKey._3,
-            ImGuiKey._4,
-            ImGuiKey._5,
-            ImGuiKey._6,
-            ImGuiKey._7,
-            ImGuiKey._8,
-            ImGuiKey._9,
-            ImGuiKey.A,
-            ImGuiKey.B,
-            ImGuiKey.C,
-            ImGuiKey.D,
-            ImGuiKey.E,
-            ImGuiKey.F,
-            ImGuiKey.G,
-            ImGuiKey.H,
-            ImGuiKey.I,
-            ImGuiKey.J,
-            ImGuiKey.K,
-            ImGuiKey.L,
-            ImGuiKey.M,
-            ImGuiKey.N,
-            ImGuiKey.O,
-            ImGuiKey.P,
-            ImGuiKey.Q,
-            ImGuiKey.R,
-            ImGuiKey.S,
-            ImGuiKey.T,
-            ImGuiKey.U,
-            ImGuiKey.V,
-            ImGuiKey.W,
-            ImGuiKey.X,
-            ImGuiKey.Y,
-            ImGuiKey.Z,
-            ImGuiKey.Keypad0,
-            ImGuiKey.Keypad1,
-            ImGuiKey.Keypad2,
-            ImGuiKey.Keypad3,
-            ImGuiKey.Keypad4,
-            ImGuiKey.Keypad5,
-            ImGuiKey.Keypad6,
-            ImGuiKey.Keypad7,
-            ImGuiKey.Keypad8,
-            ImGuiKey.Keypad9,
-            ImGuiKey.KeypadMultiply,
-            ImGuiKey.KeypadAdd,
-            ImGuiKey.KeypadSubtract,
-            ImGuiKey.KeypadDecimal,
-            ImGuiKey.KeypadDivide,
-            ImGuiKey.F1,
-            ImGuiKey.F2,
-            ImGuiKey.F3,
-            ImGuiKey.F4,
-            ImGuiKey.F5,
-            ImGuiKey.F6,
-            ImGuiKey.F7,
-            ImGuiKey.F8,
-            ImGuiKey.F9,
-            ImGuiKey.F10,
-            ImGuiKey.F11,
-            ImGuiKey.F12,
-            ImGuiKey.Semicolon,
-            ImGuiKey.Equal,
-            ImGuiKey.Comma,
-            ImGuiKey.Minus,
-            ImGuiKey.Period,
-            ImGuiKey.Slash,
-            ImGuiKey.GraveAccent,
-            ImGuiKey.LeftBracket,
-            ImGuiKey.Backslash,
-            ImGuiKey.RightBracket,
-            ImGuiKey.Apostrophe,
-            //ImGuiKey.OEM_8, // Valid in VirtualKey but doesn't exist in ImGuiKey
-            //ImGuiKey.OEM_102, // Valid in VirtualKey but doesn't exist in ImGuiKey
-        };
     }
 }

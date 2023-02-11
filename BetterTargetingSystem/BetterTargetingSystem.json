@@ -2,7 +2,7 @@
     "Author": "Lynesth",
     "Name": "Better Targeting System",
     "Punchline": "A more intelligent targeting system for the game.",
-    "Description": "",
+    "Description": "A more intelligent targeting system for the game which also includes new keybinds.",
     "InternalName": "BetterTargetingSystem",
     "ApplicableVersion": "any",
     "IconUrl": "https://github.com/Lynesth/BetterTargetingSystem/raw/main/BetterTargetingSystem/images/icon.png",
