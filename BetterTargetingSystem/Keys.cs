@@ -61,9 +61,9 @@ public unsafe class Keybind
 
         MouseKey? mouseKey;
         if ((mouseKey = this.GetMouseKey()) != null)
-            return Plugin.IsInputPressed!(Plugin.GetInputData!(CSFramework.Instance()), (int) mouseKey);
+            return (((byte*)Plugin.GetInputData!(CSFramework.Instance()))[0x4A8] & (int)mouseKey) != 0;
         else
-            return Plugin.KeyState[(int) this.Key];
+            return Plugin.KeyState[(int)this.Key];
     }
 
     public override string ToString()
@@ -189,10 +189,10 @@ public unsafe class Keybind
 
     public enum MouseKey
     {
-        //LBUTTON = 1,
-        //RBUTTON = 2,
-        MBUTTON = 349,
-        XBUTTON1 = 6879,
-        XBUTTON2 = 8220
+        // LBUTTON = 1,
+        // RBUTTON = 2,
+        MBUTTON = 4,
+        XBUTTON1 = 8,
+        XBUTTON2 = 16
     }
 }
