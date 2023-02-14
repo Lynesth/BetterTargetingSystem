@@ -36,7 +36,8 @@ public sealed unsafe class Plugin : IDalamudPlugin
     public string CommandConfig => "/bts";
     public string CommandHelp => "/btshelp";
 
-    public List<uint> LastTargets { get; private set; } = new List<uint>();
+    public IEnumerable<uint> LastConeTargets { get; private set; } = new List<uint>();
+    public List<uint> CyclingTargets { get; private set; } = new List<uint>();
 
     private DalamudPluginInterface PluginInterface { get; init; }
     private CommandManager CommandManager { get; init; }
@@ -65,9 +66,6 @@ public sealed unsafe class Plugin : IDalamudPlugin
     internal static GetInputDataDelegate? GetInputData = null!;
     internal delegate nint GetInputDataDelegate(CSFramework* framework);
 
-    [Signature("E9 ?? ?? ?? ?? 83 7F 44 02")]
-    internal static IsInputPressedDelegate? IsInputPressed = null!;
-    internal delegate bool IsInputPressedDelegate(nint a1, int a2);
 
     public Plugin(
         [RequiredVersion("1.0")] DalamudPluginInterface pluginInterface,
@@ -213,7 +211,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
             return;
 
         var AOETargetsList = new List<AOETarget>();
-        foreach(var enemy in EnemyListTargets)
+        foreach (var enemy in EnemyListTargets)
         {
             var AOETarget = new AOETarget(enemy);
             foreach (var other in EnemyListTargets)
@@ -246,51 +244,98 @@ public sealed unsafe class Plugin : IDalamudPlugin
         if (EnemyListTargets.Count == 0 && OnScreenTargets.Count == 0)
             return;
 
-        var _targets = Targets;
+        var _currentTarget = TargetManager.Target;
+        var _previousTarget = TargetManager.PreviousTarget;
+        var _targetObjectId = _currentTarget?.ObjectId ?? _previousTarget?.ObjectId ?? 0;
+
+        // Targets in the frontal cone
         if (Targets.Count > 0)
         {
-            if (Targets.Count == 1 && this.LastTargets.ToHashSet().SetEquals(Targets.Select(o => o.ObjectId).ToHashSet()))
+            Targets = Targets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).ToList();
+
+            var TargetsObjectIds = Targets.Select(o => o.ObjectId);
+            // Same cone targets as last cycle
+            if (this.LastConeTargets.ToHashSet().SetEquals(TargetsObjectIds.ToHashSet()))
             {
-                if (CloseTargets.Count > 0)
-                    _targets.AddRange(CloseTargets);
-                else
-                    _targets.AddRange(EnemyListTargets);
+                // Add the close targets to the list of potential targets
+                var _potentialTargets = Targets.UnionBy(CloseTargets, o => o.ObjectId).ToList();
+                var _potentialTargetsObjectIds = _potentialTargets.Select(o => o.ObjectId);
 
-                _targets = _targets.Distinct().ToList();
+                // New enemies to be added
+                if (_potentialTargetsObjectIds.Any(o => this.CyclingTargets.Contains(o) == false))
+                    this.CyclingTargets = this.CyclingTargets.Union(_potentialTargetsObjectIds).ToList();
+
+                //// No new enemies in the potential targets compared to last cycle
+                //if (_potentialTargetsObjectIds.All(this.CyclingTargets.Contains))
+                //{
+
+                // We simply select the next target
+                this.CyclingTargets = this.CyclingTargets.Intersect(_potentialTargetsObjectIds).ToList();
+                var index = this.CyclingTargets.FindIndex(o => o == _targetObjectId);
+                if (index == this.CyclingTargets.Count - 1) index = -1;
+                TargetManager.SetTarget(_potentialTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]));
             }
-        }
-        else if (CloseTargets.Count > 0)
-            _targets = CloseTargets;
-        else if (EnemyListTargets.Count > 0)
-            _targets = EnemyListTargets;
-        else
-            _targets = OnScreenTargets;
+            else
+            {
+                var _potentialTargets = Targets;
+                var _potentialTargetsObjectIds = _potentialTargets.Select(o => o.ObjectId).ToList();
+                var index = _potentialTargetsObjectIds.FindIndex(o => o == _targetObjectId);
+                if (index == _potentialTargetsObjectIds.Count - 1) index = -1;
+                TargetManager.SetTarget(_potentialTargets.Find(o => o.ObjectId == _potentialTargetsObjectIds[index + 1]));
 
-        var _currentTarget = TargetManager.Target;
-        if (_currentTarget == null)
-        {
-            _targets = _targets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).ToList();
-            this.LastTargets = _targets.Select(o => o.ObjectId).ToList();
-            TargetManager.SetTarget(_targets[0]);
+                this.LastConeTargets = TargetsObjectIds;
+                this.CyclingTargets = _potentialTargetsObjectIds;
+            }
+
             return;
         }
 
-        if (this.LastTargets.ToHashSet().SetEquals(_targets.Select(o => o.ObjectId).ToHashSet()) == false)
+        if (CloseTargets.Count > 0)
         {
-            _targets = _targets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).ToList();
-            this.LastTargets = _targets.Select(o => o.ObjectId).ToList();
+            var _potentialTargetsObjectIds = CloseTargets.Select(o => o.ObjectId);
+
+            if (_potentialTargetsObjectIds.Any(o => this.CyclingTargets.Contains(o) == false))
+                this.CyclingTargets = this.CyclingTargets.Union(_potentialTargetsObjectIds).ToList();
+
+            // We simply select the next target
+            this.CyclingTargets = this.CyclingTargets.Intersect(_potentialTargetsObjectIds).ToList();
+            var index = this.CyclingTargets.FindIndex(o => o == _targetObjectId);
+            if (index == this.CyclingTargets.Count - 1) index = -1;
+            TargetManager.SetTarget(CloseTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]));
+
+            return;
         }
 
-        var i = 0;
-        for (i = 0; i < _targets.Count; i++)
+        if (EnemyListTargets.Count > 0)
         {
-            if (this.LastTargets[i] == _currentTarget.ObjectId)
-                break;
+            var _potentialTargetsObjectIds = EnemyListTargets.Select(o => o.ObjectId);
+
+            if (_potentialTargetsObjectIds.Any(o => this.CyclingTargets.Contains(o) == false))
+                this.CyclingTargets = this.CyclingTargets.Union(_potentialTargetsObjectIds).ToList();
+
+            // We simply select the next target
+            this.CyclingTargets = this.CyclingTargets.Intersect(_potentialTargetsObjectIds).ToList();
+            var index = this.CyclingTargets.FindIndex(o => o == _targetObjectId);
+            if (index == this.CyclingTargets.Count - 1) index = -1;
+            TargetManager.SetTarget(EnemyListTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]));
+
+            return;
         }
 
-        var id = i < this.LastTargets.Count - 1 ? this.LastTargets[i + 1] : this.LastTargets[0];
+        if (OnScreenTargets.Count > 0)
+        {
+            OnScreenTargets = OnScreenTargets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).ToList();
+            var _potentialTargetsObjectIds = OnScreenTargets.Select(o => o.ObjectId);
 
-        TargetManager.SetTarget(_targets.First(o => o.ObjectId == id));
+            if (_potentialTargetsObjectIds.Any(o => this.CyclingTargets.Contains(o) == false))
+                this.CyclingTargets = this.CyclingTargets.Union(_potentialTargetsObjectIds).ToList();
+
+            // We simply select the next target
+            this.CyclingTargets = this.CyclingTargets.Intersect(_potentialTargetsObjectIds).ToList();
+            var index = this.CyclingTargets.FindIndex(o => o == _targetObjectId);
+            if (index == this.CyclingTargets.Count - 1) index = -1;
+            TargetManager.SetTarget(OnScreenTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]));
+        }
     }
 
     private bool CanAttack(DalamudGameObject obj)
