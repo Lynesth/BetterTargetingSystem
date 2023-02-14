@@ -142,6 +142,10 @@ public sealed unsafe class Plugin : IDalamudPlugin
             return;
         }
 
+        // Don't allow extra keybinds in PvP
+        if (Client.IsPvPExcludingDen)
+            return;
+
         if (Configuration.LowestHealthTargetKeybind.IsPressed())
         {
             try { KeyState[(int)Configuration.LowestHealthTargetKeybind.Key!] = false; } catch { }
@@ -456,6 +460,9 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
     private uint[] GetEnemyList()
     {
+        if (Client.IsPvPExcludingDen)
+            return Array.Empty<uint>();
+
         var addonByName = GameGui.GetAddonByName("_EnemyList", 1);
         if (addonByName == IntPtr.Zero)
             return Array.Empty<uint>();
