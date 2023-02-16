@@ -49,7 +49,6 @@ public sealed unsafe class Plugin : IDalamudPlugin
     [PluginService] private static ClientState Client { get; set; } = null!;
     [PluginService] private static ObjectTable ObjectTable { get; set; } = null!;
     [PluginService] private static TargetManager TargetManager { get; set; } = null!;
-    [PluginService] private static ChatGui Chat { get; set; } = null!;
     [PluginService] private static GameGui GameGui { get; set; } = null!;
     [PluginService] internal static KeyState KeyState { get; set; } = null!;
 
@@ -60,11 +59,6 @@ public sealed unsafe class Plugin : IDalamudPlugin
     [Signature("48 89 5C 24 ?? 57 48 83 EC 20 48 8B DA 8B F9 E8 ?? ?? ?? ?? 4C 8B C3")]
     private CanAttackDelegate? CanAttackFunction = null!;
     private delegate nint CanAttackDelegate(nint a1, nint objectAddress);
-
-    public static nint InputData;
-    [Signature("E8 ?? ?? ?? ?? 80 BB A2 00 00 00 00")]
-    internal static GetInputDataDelegate? GetInputData = null!;
-    internal delegate nint GetInputDataDelegate(CSFramework* framework);
 
 
     public Plugin(
@@ -82,6 +76,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
         Framework = framework;
         Framework.Update += Update;
+        Client.TerritoryChanged += ClearLists;
 
         ConfigWindow = new ConfigWindow(this);
         WindowSystem.AddWindow(ConfigWindow);
@@ -98,15 +93,15 @@ public sealed unsafe class Plugin : IDalamudPlugin
     public void Dispose()
     {
         Framework.Update -= Update;
+        Client.TerritoryChanged -= ClearLists;
+        this.CommandManager.RemoveHandler(CommandConfig);
+        this.CommandManager.RemoveHandler(CommandHelp);
         this.WindowSystem.RemoveAllWindows();
         ConfigWindow.Dispose();
         HelpWindow.Dispose();
-        this.CommandManager.RemoveHandler(CommandConfig);
-        this.CommandManager.RemoveHandler(CommandHelp);
     }
 
     public static void Log(string message) => PluginLog.Debug(message);
-
     private void ShowConfigWindow(string command, string args) => this.DrawConfigUI();
     private void ShowHelpWindow(string command, string args) => HelpWindow.Toggle();
     private void DrawUI() => this.WindowSystem.Draw();
@@ -115,11 +110,18 @@ public sealed unsafe class Plugin : IDalamudPlugin
     private RaptureAtkModule* RaptureAtkModule => CSFramework.Instance()->GetUiModule()->GetRaptureAtkModule();
     private bool IsTextInputActive => RaptureAtkModule->AtkModule.IsTextInputActive();
 
+    public void ClearLists(object? sender, ushort territoryType)
+    {
+        // Attempt to fix a very rare bug I can't reproduce
+        this.LastConeTargets = new List<uint>();
+        this.CyclingTargets = new List<uint>();
+    }
+
     public void Update(Framework framework)
     {
         if (Client.IsLoggedIn == false)
             return;
-
+        
         if (IsTextInputActive || ImGuiNET.ImGui.GetIO().WantCaptureKeyboard)
             return;
 
@@ -134,7 +136,6 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
         if (Configuration.ClosestTargetKeybind.IsPressed())
         {
-
             try { KeyState[(int)Configuration.ClosestTargetKeybind.Key!] = false; } catch { }
             TargetClosest();
             return;
@@ -264,10 +265,6 @@ public sealed unsafe class Plugin : IDalamudPlugin
                 // New enemies to be added
                 if (_potentialTargetsObjectIds.Any(o => this.CyclingTargets.Contains(o) == false))
                     this.CyclingTargets = this.CyclingTargets.Union(_potentialTargetsObjectIds).ToList();
-
-                //// No new enemies in the potential targets compared to last cycle
-                //if (_potentialTargetsObjectIds.All(this.CyclingTargets.Contains))
-                //{
 
                 // We simply select the next target
                 this.CyclingTargets = this.CyclingTargets.Intersect(_potentialTargetsObjectIds).ToList();
