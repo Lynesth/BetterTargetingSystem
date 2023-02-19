@@ -1,5 +1,6 @@
 using Dalamud.Game;
 using Dalamud.Game.ClientState;
+using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Keys;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.Enums;
@@ -13,20 +14,15 @@ using Dalamud.Utility.Signatures;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
 using FFXIVClientStructs.FFXIV.Client.Game.Group;
 using FFXIVClientStructs.FFXIV.Client.Graphics.Kernel;
-using FFXIVClientStructs.FFXIV.Client.UI;
-using FFXIVClientStructs.FFXIV.Common.Component.BGCollision;
 using BetterTargetingSystem.Windows;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 
 using DalamudCharacter = Dalamud.Game.ClientState.Objects.Types.Character;
 using DalamudGameObject = Dalamud.Game.ClientState.Objects.Types.GameObject;
 using ObjectKind = Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
 using GameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
-using CameraManager = FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CameraManager;
-using CSFramework = FFXIVClientStructs.FFXIV.Client.System.Framework.Framework;
 
 namespace BetterTargetingSystem;
 
@@ -36,30 +32,30 @@ public sealed unsafe class Plugin : IDalamudPlugin
     public string CommandConfig => "/bts";
     public string CommandHelp => "/btshelp";
 
-    public IEnumerable<uint> LastConeTargets { get; private set; } = new List<uint>();
-    public List<uint> CyclingTargets { get; private set; } = new List<uint>();
+    internal IEnumerable<uint> LastConeTargets { get; private set; } = Enumerable.Empty<uint>();
+    internal List<uint> CyclingTargets { get; private set; } = new List<uint>();
+    internal DebugMode DebugMode { get; private set; }
 
     private DalamudPluginInterface PluginInterface { get; init; }
     private CommandManager CommandManager { get; init; }
     private static Framework Framework { get; set; } = null!;
     public Configuration Configuration { get; init; }
 
-    public WindowSystem WindowSystem = new("BetterTargetingSystem");
-
-    [PluginService] private static ClientState Client { get; set; } = null!;
-    [PluginService] private static ObjectTable ObjectTable { get; set; } = null!;
-    [PluginService] private static TargetManager TargetManager { get; set; } = null!;
-    [PluginService] private static GameGui GameGui { get; set; } = null!;
+    [PluginService] internal static ClientState Client { get; set; } = null!;
+    [PluginService] private ObjectTable ObjectTable { get; set; } = null!;
+    [PluginService] private TargetManager TargetManager { get; set; } = null!;
+    [PluginService] internal static GameGui GameGui { get; set; } = null!;
     [PluginService] internal static KeyState KeyState { get; set; } = null!;
+    [PluginService] internal Condition Condition { get; private set; }
 
     private ConfigWindow ConfigWindow { get; init; }
     private HelpWindow HelpWindow { get; init; }
+    private WindowSystem WindowSystem = new("BetterTargetingSystem");
 
     // Shamelessly stolen, not sure what that game function exactly does but it works
     [Signature("48 89 5C 24 ?? 57 48 83 EC 20 48 8B DA 8B F9 E8 ?? ?? ?? ?? 4C 8B C3")]
-    private CanAttackDelegate? CanAttackFunction = null!;
-    private delegate nint CanAttackDelegate(nint a1, nint objectAddress);
-
+    internal static CanAttackDelegate? CanAttackFunction = null!;
+    internal delegate nint CanAttackDelegate(nint a1, nint objectAddress);
 
     public Plugin(
         [RequiredVersion("1.0")] DalamudPluginInterface pluginInterface,
@@ -82,8 +78,11 @@ public sealed unsafe class Plugin : IDalamudPlugin
         WindowSystem.AddWindow(ConfigWindow);
         HelpWindow = new HelpWindow(this);
         WindowSystem.AddWindow(HelpWindow);
+
+        this.DebugMode = new DebugMode(this);
         this.PluginInterface.UiBuilder.Draw += DrawUI;
         this.PluginInterface.UiBuilder.OpenConfigUi += DrawConfigUI;
+
         this.CommandManager.AddHandler(CommandConfig, new CommandInfo(ShowConfigWindow)
             { HelpMessage = "Open the configuration window." });
         this.CommandManager.AddHandler(CommandHelp, new CommandInfo(ShowHelpWindow)
@@ -102,13 +101,10 @@ public sealed unsafe class Plugin : IDalamudPlugin
     }
 
     public static void Log(string message) => PluginLog.Debug(message);
-    private void ShowConfigWindow(string command, string args) => this.DrawConfigUI();
-    private void ShowHelpWindow(string command, string args) => HelpWindow.Toggle();
     private void DrawUI() => this.WindowSystem.Draw();
-    public void DrawConfigUI() => ConfigWindow.Toggle();
-
-    private RaptureAtkModule* RaptureAtkModule => CSFramework.Instance()->GetUiModule()->GetRaptureAtkModule();
-    private bool IsTextInputActive => RaptureAtkModule->AtkModule.IsTextInputActive();
+    private void DrawConfigUI() => ConfigWindow.Toggle();
+    private void ShowHelpWindow(string command, string args) => HelpWindow.Toggle();
+    private void ShowConfigWindow(string command, string args) => this.DrawConfigUI();
 
     public void ClearLists(object? sender, ushort territoryType)
     {
@@ -119,10 +115,10 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
     public void Update(Framework framework)
     {
-        if (Client.IsLoggedIn == false)
+        if (Client.IsLoggedIn == false || Client.LocalPlayer == false)
             return;
         
-        if (IsTextInputActive || ImGuiNET.ImGui.GetIO().WantCaptureKeyboard)
+        if (Utils.IsTextInputActive || ImGuiNET.ImGui.GetIO().WantCaptureKeyboard)
             return;
 
         Keybinds.Keybind.GetKeyboardState();
@@ -130,7 +126,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         if (Configuration.TabTargetKeybind.IsPressed())
         {
             try { KeyState[(int)Configuration.TabTargetKeybind.Key!] = false; } catch { }
-            NextTarget();
+            CycleTargets();
             return;
         }
 
@@ -176,8 +172,8 @@ public sealed unsafe class Plugin : IDalamudPlugin
         var _targets = OnScreenTargets.Count > 0 ? OnScreenTargets : EnemyListTargets;
 
         var _target = lowestHealth
-            ? _targets.OrderBy(o => (o as DalamudCharacter)?.CurrentHp).ThenBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).First()
-            : _targets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).First();
+            ? _targets.OrderBy(o => (o as DalamudCharacter)?.CurrentHp).ThenBy(o => Utils.DistanceBetweenObjects(Client.LocalPlayer, o)).First()
+            : _targets.OrderBy(o => Utils.DistanceBetweenObjects(Client.LocalPlayer, o)).First();
 
         TargetManager.SetTarget(_target);
     }
@@ -218,7 +214,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
             foreach (var other in EnemyListTargets)
             {
                 if (other == enemy) continue;
-                if (DistanceBetweenObjects(enemy, other) > 5) continue;
+                if (Utils.DistanceBetweenObjects(enemy, other) > 5) continue;
                 AOETarget.inRange += 1;
             }
             AOETargetsList.Add(AOETarget);
@@ -234,7 +230,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         TargetManager.SetTarget(_target);
     }
 
-    private void NextTarget()
+    private void CycleTargets()
     {
         if (Client.LocalPlayer == null)
             return;
@@ -252,7 +248,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         // Targets in the frontal cone
         if (Targets.Count > 0)
         {
-            Targets = Targets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).ToList();
+            Targets = Targets.OrderBy(o => Utils.DistanceBetweenObjects(Client.LocalPlayer, o)).ToList();
 
             var TargetsObjectIds = Targets.Select(o => o.ObjectId);
             // Same cone targets as last cycle
@@ -286,6 +282,8 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
             return;
         }
+
+        this.LastConeTargets = Enumerable.Empty<uint>();
 
         if (CloseTargets.Count > 0)
         {
@@ -321,7 +319,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
         if (OnScreenTargets.Count > 0)
         {
-            OnScreenTargets = OnScreenTargets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).ToList();
+            OnScreenTargets = OnScreenTargets.OrderBy(o => Utils.DistanceBetweenObjects(Client.LocalPlayer, o)).ToList();
             var _potentialTargetsObjectIds = OnScreenTargets.Select(o => o.ObjectId);
 
             if (_potentialTargetsObjectIds.Any(o => this.CyclingTargets.Contains(o) == false))
@@ -335,77 +333,8 @@ public sealed unsafe class Plugin : IDalamudPlugin
         }
     }
 
-    private bool CanAttack(DalamudGameObject obj)
-    {
-        return CanAttackFunction?.Invoke(142, obj.Address) == 1;
-    }
-
-    internal float DistanceBetweenObjects(DalamudGameObject source, DalamudGameObject target)
-    {
-        // Might have to tinker a bit whether or not to include hitbox radius in calculation
-        // Keeping the source object hitbox radius outside of the calculation for now
-        var distance = Vector3.Distance(source.Position, target.Position);
-        //distance -= source.HitboxRadius;
-        distance -= target.HitboxRadius;
-        return distance;
-    }
-
-    internal bool IsInFrontOfCamera(DalamudGameObject obj, int maxAngle)
-    {
-        // This is still relying on camera orientation but the cone is from the player's position
-        if (Client.LocalPlayer == null)
-            return false;
-
-        // Gives the camera rotation in deg between -180 and 180
-        var cameraRotation = RaptureAtkModule->AtkModule.AtkArrayDataHolder.NumberArrays[24]->IntArray[3];
-
-        // Transform the [-180,180] rotation to rad with same 0 as a GameObject rotation
-        // There might be an easier way to do that, but geometry and I aren't friends
-        var sign = Math.Sign(cameraRotation) == -1 ? -1 : 1;
-        var rotation = (float)((Math.Abs(cameraRotation * (Math.PI / 180)) - Math.PI) * sign);
-
-        var faceVec = new Vector2((float)Math.Cos(rotation), (float)Math.Sin(rotation));
-
-        var dir = obj.Position - Client.LocalPlayer.Position;
-        var dirVec = new Vector2(dir.Z, dir.X);
-        var angle = Math.Acos(Vector2.Dot(dirVec, faceVec) / dirVec.Length() / faceVec.Length());
-        return angle <= Math.PI * maxAngle / 360;
-    }
-
-    private bool IsInLineOfSight(GameObject* target, bool useCamera = false)
-    {
-        var sourcePos = FFXIVClientStructs.FFXIV.Common.Math.Vector3.Zero;
-        if (useCamera)
-        {
-            // Using the camera's position as origin for raycast
-            sourcePos = CameraManager.Instance()->CurrentCamera->Object.Position;
-        }
-        else
-        {
-            // Using player's position as origin for raycast
-            if (Client.LocalPlayer == null) return false;
-            var player = (GameObject*)Client.LocalPlayer.Address;
-            sourcePos = player->Position;
-            sourcePos.Y += 2;
-        }
-
-        var targetPos = target->Position;
-        targetPos.Y += 2;
-
-        var direction = targetPos - sourcePos;
-        var distance = direction.Magnitude;
-
-        direction = direction.Normalized;
-
-        RaycastHit hit;
-        var flags = stackalloc int[] { 0x4000, 0, 0x4000, 0 };
-        var isLoSBlocked = CSFramework.Instance()->BGCollisionModule->RaycastEx(&hit, sourcePos, direction, distance, 1, flags);
-
-        return isLoSBlocked == false;
-    }
-
     public record ObjectsList(List<DalamudGameObject> Targets, List<DalamudGameObject> CloseTargets, List<DalamudGameObject> TargetsEnemy, List<DalamudGameObject> OnScreenTargets);
-    private ObjectsList GetTargets()
+    internal ObjectsList GetTargets()
     {
         /* Always return 4 lists.
          * The enemies in a cone in front of the player
@@ -431,10 +360,10 @@ public sealed unsafe class Plugin : IDalamudPlugin
             o => (ObjectKind.BattleNpc.Equals(o.ObjectKind)
                 || ObjectKind.Player.Equals(o.ObjectKind))
             && o != Client.LocalPlayer
-            && CanAttack(o)
+            && Utils.CanAttack(o)
         );
 
-        var EnemyList = GetEnemyList();
+        var EnemyList = Utils.GetEnemyListObjectIds();
 
         foreach (var obj in PotentialTargets)
         {
@@ -452,7 +381,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
                 && o->EventId.Id != Player->EventId.Id)
                 continue;
 
-            var distance = DistanceBetweenObjects(Client.LocalPlayer!, obj);
+            var distance = Utils.DistanceBetweenObjects(Client.LocalPlayer!, obj);
 
             // This is a bit less than the max distance to target something the vanilla way
             if (distance > 49) continue;
@@ -473,50 +402,52 @@ public sealed unsafe class Plugin : IDalamudPlugin
             if (GameGui.WorldToScreen(o->Position, out _) == false) continue;
 
             // Check actual line of sight from camera to object (blocked by walls, etc)
-            if (IsInLineOfSight(o, true) == false) continue;
+            if (Utils.IsInLineOfSight(o, true) == false) continue;
 
             // On screen and in light of sight of the camera, adding it to the On Screen list
             OnScreenTargetsList.Add(obj);
 
-            // Further than 40y, don't care about targeting it
-            if (distance > 40) continue;
-
-            // Default cone angle for very close targets, getting wider the closer the target is
-            var angle = 140;
-            if (distance > 15)
-                angle = 75;
-            else if (distance > 5)
-                angle = 90;
-            else
-                // Close to the player, adding it to the Close targets list
+            // Close to the player, adding it to the Close targets list
+            if (distance < Configuration.CloseTargetsCircleRadius)
                 CloseTargetsList.Add(obj);
 
-            if (IsInFrontOfCamera(obj, angle) == false) continue;
+            // Further than the bigger cone, don't care about targeting it
+            if (Configuration.Cone3Enabled)
+            {
+                if (distance > Configuration.Cone3Distance)
+                    continue;
+            }
+            else if (Configuration.Cone2Enabled)
+            {
+                if (distance > Configuration.Cone2Distance)
+                    continue;
+            }
+            else if (distance > Configuration.Cone1Distance)
+                continue;
+
+            // Default cone angle for very close targets, getting wider the closer the target is
+            var angle = Configuration.Cone1Angle;
+            if (Configuration.Cone3Enabled)
+            {
+                if (Configuration.Cone2Enabled)
+                {
+                    if (distance > Configuration.Cone2Distance)
+                        angle = Configuration.Cone3Angle;
+                    else if (distance > Configuration.Cone1Distance)
+                        angle = Configuration.Cone2Angle;
+                }
+                else if (distance > Configuration.Cone1Distance)
+                    angle = Configuration.Cone3Angle;
+            }
+            else if (Configuration.Cone2Enabled && distance > Configuration.Cone1Distance)
+                angle = Configuration.Cone2Angle;
+
+            if (Utils.IsInFrontOfCamera(obj, angle) == false) continue;
 
             // In front of the player, adding it to the default list
             TargetsList.Add(obj);
         }
 
         return new ObjectsList(TargetsList, CloseTargetsList, TargetsEnemyList, OnScreenTargetsList);
-    }
-
-    private uint[] GetEnemyList()
-    {
-        if (Client.IsPvPExcludingDen)
-            return Array.Empty<uint>();
-
-        var addonByName = GameGui.GetAddonByName("_EnemyList", 1);
-        if (addonByName == IntPtr.Zero)
-            return Array.Empty<uint>();
-
-        var addon = (AddonEnemyList*)addonByName;
-        var numArray = RaptureAtkModule->AtkModule.AtkArrayDataHolder.NumberArrays[21];
-        var list = new List<uint>(addon->EnemyCount);
-        for (var i = 0; i < addon->EnemyCount; i++)
-        {
-            var id = (uint)numArray->IntArray[8 + (i * 6)];
-            list.Add(id);
-        }
-        return list.ToArray();
     }
 }

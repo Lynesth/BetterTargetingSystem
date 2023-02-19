@@ -26,7 +26,7 @@ public unsafe class Keybind
         return KeyStates[key] > 1;
     }
 
-    public Keybind(VirtualKey? key, bool ctrl, bool shift, bool alt)
+    public Keybind(VirtualKey? key = null, bool ctrl = false, bool shift = false, bool alt = false)
     {
         this.Key = key;
         this.ControlModifier = ctrl;
