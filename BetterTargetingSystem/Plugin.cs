@@ -117,7 +117,11 @@ public sealed unsafe class Plugin : IDalamudPlugin
     {
         if (Client.IsLoggedIn == false || Client.LocalPlayer == false)
             return;
-        
+
+        // Disable features in PvP
+        if (Client.IsPvP)
+            return;
+
         if (Utils.IsTextInputActive || ImGuiNET.ImGui.GetIO().WantCaptureKeyboard)
             return;
 
@@ -136,10 +140,6 @@ public sealed unsafe class Plugin : IDalamudPlugin
             TargetClosest();
             return;
         }
-
-        // Don't allow extra keybinds in PvP
-        if (Client.IsPvPExcludingDen)
-            return;
 
         if (Configuration.LowestHealthTargetKeybind.IsPressed())
         {
