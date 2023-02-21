@@ -97,9 +97,6 @@ public unsafe class Utils
 
     internal static uint[] GetEnemyListObjectIds()
     {
-        if (Plugin.Client.IsPvPExcludingDen)
-            return Array.Empty<uint>();
-
         var addonByName = Plugin.GameGui.GetAddonByName("_EnemyList", 1);
         if (addonByName == IntPtr.Zero)
             return Array.Empty<uint>();
