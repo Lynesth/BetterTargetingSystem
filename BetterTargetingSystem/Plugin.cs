@@ -1,13 +1,7 @@
-using Dalamud.Game;
-using Dalamud.Game.ClientState;
-using Dalamud.Game.ClientState.Keys;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.Enums;
-using Dalamud.Game.Command;
-using Dalamud.Game.Gui;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
-using Dalamud.Logging;
 using Dalamud.Plugin;
 using Dalamud.Utility.Signatures;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
@@ -20,7 +14,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
-
+using Dalamud.Game.Command;
+using Dalamud.Plugin.Services;
 using DalamudCharacter = Dalamud.Game.ClientState.Objects.Types.Character;
 using DalamudGameObject = Dalamud.Game.ClientState.Objects.Types.GameObject;
 using ObjectKind = Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
@@ -40,17 +35,19 @@ public sealed unsafe class Plugin : IDalamudPlugin
     public List<uint> CyclingTargets { get; private set; } = new List<uint>();
 
     private DalamudPluginInterface PluginInterface { get; init; }
-    private CommandManager CommandManager { get; init; }
-    private static Framework Framework { get; set; } = null!;
+    private ICommandManager CommandManager { get; init; }
+    private IFramework Framework { get; init; }
+    private IPluginLog PluginLog { get; init; }
     public Configuration Configuration { get; init; }
 
     public WindowSystem WindowSystem = new("BetterTargetingSystem");
 
-    [PluginService] private static ClientState Client { get; set; } = null!;
-    [PluginService] private static ObjectTable ObjectTable { get; set; } = null!;
-    [PluginService] private static TargetManager TargetManager { get; set; } = null!;
-    [PluginService] private static GameGui GameGui { get; set; } = null!;
-    [PluginService] internal static KeyState KeyState { get; set; } = null!;
+    [PluginService] private static IClientState Client { get; set; } = null!;
+    [PluginService] private static IObjectTable ObjectTable { get; set; } = null!;
+    [PluginService] private static ITargetManager TargetManager { get; set; } = null!;
+    [PluginService] private static IGameGui GameGui { get; set; } = null!;
+    [PluginService] private static IGameInteropProvider GameInteropProvider { get; set; } = null!;
+    [PluginService] internal static IKeyState KeyState { get; set; } = null!;
 
     private ConfigWindow ConfigWindow { get; init; }
     private HelpWindow HelpWindow { get; init; }
@@ -63,13 +60,15 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
     public Plugin(
         [RequiredVersion("1.0")] DalamudPluginInterface pluginInterface,
-        [RequiredVersion("1.0")] CommandManager commandManager,
-        Framework framework)
+        [RequiredVersion("1.0")] ICommandManager commandManager,
+        [RequiredVersion("1.0")] IPluginLog pluginLog,
+        [RequiredVersion("1.0")] IFramework framework)
     {
-        SignatureHelper.Initialise(this);
+        GameInteropProvider.InitializeFromAttributes(this);
 
         this.PluginInterface = pluginInterface;
         this.CommandManager = commandManager;
+        this.PluginLog = pluginLog;
 
         this.Configuration = this.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         this.Configuration.Initialize(this.PluginInterface);
@@ -101,7 +100,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
         HelpWindow.Dispose();
     }
 
-    public static void Log(string message) => PluginLog.Debug(message);
+    public void Log(string message) => PluginLog.Debug(message);
     private void ShowConfigWindow(string command, string args) => this.DrawConfigUI();
     private void ShowHelpWindow(string command, string args) => HelpWindow.Toggle();
     private void DrawUI() => this.WindowSystem.Draw();
@@ -110,14 +109,14 @@ public sealed unsafe class Plugin : IDalamudPlugin
     private RaptureAtkModule* RaptureAtkModule => CSFramework.Instance()->GetUiModule()->GetRaptureAtkModule();
     private bool IsTextInputActive => RaptureAtkModule->AtkModule.IsTextInputActive();
 
-    public void ClearLists(object? sender, ushort territoryType)
+    public void ClearLists(ushort territoryType)
     {
         // Attempt to fix a very rare bug I can't reproduce
         this.LastConeTargets = new List<uint>();
         this.CyclingTargets = new List<uint>();
     }
 
-    public void Update(Framework framework)
+    public void Update(IFramework framework)
     {
         if (Client.IsLoggedIn == false)
             return;
@@ -179,7 +178,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
             ? _targets.OrderBy(o => (o as DalamudCharacter)?.CurrentHp).ThenBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).First()
             : _targets.OrderBy(o => DistanceBetweenObjects(Client.LocalPlayer, o)).First();
 
-        TargetManager.SetTarget(_target);
+        TargetManager.Target = _target;
     }
 
     private class AOETarget
@@ -231,7 +230,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
 
         var _target = _targets.OrderByDescending(o => o.inRange).ThenByDescending(o => (o.obj as DalamudCharacter)?.CurrentHp).First().obj;
 
-        TargetManager.SetTarget(_target);
+        TargetManager.Target = _target;
     }
 
     private void NextTarget()
@@ -270,7 +269,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
                 this.CyclingTargets = this.CyclingTargets.Intersect(_potentialTargetsObjectIds).ToList();
                 var index = this.CyclingTargets.FindIndex(o => o == _targetObjectId);
                 if (index == this.CyclingTargets.Count - 1) index = -1;
-                TargetManager.SetTarget(_potentialTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]));
+                TargetManager.Target = _potentialTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]);
             }
             else
             {
@@ -278,7 +277,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
                 var _potentialTargetsObjectIds = _potentialTargets.Select(o => o.ObjectId).ToList();
                 var index = _potentialTargetsObjectIds.FindIndex(o => o == _targetObjectId);
                 if (index == _potentialTargetsObjectIds.Count - 1) index = -1;
-                TargetManager.SetTarget(_potentialTargets.Find(o => o.ObjectId == _potentialTargetsObjectIds[index + 1]));
+                TargetManager.Target = _potentialTargets.Find(o => o.ObjectId == _potentialTargetsObjectIds[index + 1]);
 
                 this.LastConeTargets = TargetsObjectIds;
                 this.CyclingTargets = _potentialTargetsObjectIds;
@@ -298,7 +297,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
             this.CyclingTargets = this.CyclingTargets.Intersect(_potentialTargetsObjectIds).ToList();
             var index = this.CyclingTargets.FindIndex(o => o == _targetObjectId);
             if (index == this.CyclingTargets.Count - 1) index = -1;
-            TargetManager.SetTarget(CloseTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]));
+            TargetManager.Target = CloseTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]);
 
             return;
         }
@@ -314,7 +313,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
             this.CyclingTargets = this.CyclingTargets.Intersect(_potentialTargetsObjectIds).ToList();
             var index = this.CyclingTargets.FindIndex(o => o == _targetObjectId);
             if (index == this.CyclingTargets.Count - 1) index = -1;
-            TargetManager.SetTarget(EnemyListTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]));
+            TargetManager.Target = EnemyListTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]);
 
             return;
         }
@@ -331,7 +330,7 @@ public sealed unsafe class Plugin : IDalamudPlugin
             this.CyclingTargets = this.CyclingTargets.Intersect(_potentialTargetsObjectIds).ToList();
             var index = this.CyclingTargets.FindIndex(o => o == _targetObjectId);
             if (index == this.CyclingTargets.Count - 1) index = -1;
-            TargetManager.SetTarget(OnScreenTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]));
+            TargetManager.Target = OnScreenTargets.Find(o => o.ObjectId == this.CyclingTargets[index + 1]);
         }
     }
 
