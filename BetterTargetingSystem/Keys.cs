@@ -26,7 +26,7 @@ public unsafe class Keybind
         return KeyStates[key] > 1;
     }
 
-    public Keybind(VirtualKey? key, bool ctrl, bool shift, bool alt)
+    public Keybind(VirtualKey? key = null, bool ctrl = false, bool shift = false, bool alt = false)
     {
         this.Key = key;
         this.ControlModifier = ctrl;
@@ -144,7 +144,6 @@ public unsafe class Keybind
         VirtualKey.NUMPAD9,
         VirtualKey.MULTIPLY,
         VirtualKey.ADD,
-        VirtualKey.SEPARATOR,
         VirtualKey.SUBTRACT,
         VirtualKey.DECIMAL,
         VirtualKey.DIVIDE,
@@ -160,18 +159,6 @@ public unsafe class Keybind
         VirtualKey.F10,
         VirtualKey.F11,
         VirtualKey.F12,
-        VirtualKey.F13,
-        VirtualKey.F14,
-        VirtualKey.F15,
-        VirtualKey.F16,
-        VirtualKey.F17,
-        VirtualKey.F18,
-        VirtualKey.F19,
-        VirtualKey.F20,
-        VirtualKey.F21,
-        VirtualKey.F22,
-        VirtualKey.F23,
-        VirtualKey.F24,
         VirtualKey.OEM_1,
         VirtualKey.OEM_PLUS,
         VirtualKey.OEM_COMMA,
