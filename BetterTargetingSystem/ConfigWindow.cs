@@ -5,6 +5,8 @@ using System;
 using System.Numerics;
 
 using BetterTargetingSystem.Keybinds;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace BetterTargetingSystem.Windows
 {
@@ -14,11 +16,19 @@ namespace BetterTargetingSystem.Windows
         private Configuration Configuration;
         public Keybind CurrentKeys { get; private set; }
 
-        private bool ModifyingKeybindTTK = false;
-        private bool ModifyingKeybindCTK = false;
-        private bool ModifyingKeybindLHTK = false;
-        private bool ModifyingKeybindHHTK = false;
-        private bool ModifyingKeybindBAOETK = false;
+        private List<KeybindInfo> Keybinds = new List<KeybindInfo>();
+        private class KeybindInfo
+        {
+            public string title;
+            public string name;
+            public string value = "None";
+            public bool EditingKeybind = false;
+            public KeybindInfo(string title, string keybind)
+            {
+                this.title = title;
+                this.name = keybind;
+            }
+        }
 
         public ConfigWindow(Plugin plugin) : base(
             "Better Targeting System",
@@ -31,6 +41,12 @@ namespace BetterTargetingSystem.Windows
             this.Configuration = plugin.Configuration;
 
             this.CurrentKeys = new Keybind();
+
+            this.Keybinds.Add(new KeybindInfo("[Cycle Targets]", "TabTargetKeybind"));
+            this.Keybinds.Add(new KeybindInfo("[Closest Target]", "ClosestTargetKeybind"));
+            this.Keybinds.Add(new KeybindInfo("[Lowest Health Target]", "LowestHealthTargetKeybind"));
+            this.Keybinds.Add(new KeybindInfo("[Highest Health Target]", "HighestHealthTargetKeybind"));
+            this.Keybinds.Add(new KeybindInfo("[Best AOE Target]", "BestAOETargetKeybind"));
         }
 
         public void Dispose() { }
@@ -54,159 +70,60 @@ namespace BetterTargetingSystem.Windows
 
         private void KeybindsConfig()
         {
-            if (this.ModifyingKeybindTTK || this.ModifyingKeybindCTK || this.ModifyingKeybindLHTK || this.ModifyingKeybindHHTK || this.ModifyingKeybindBAOETK)
+            if (this.Keybinds.Any(k => k.EditingKeybind == true))
                 this.CurrentKeys = GetKeys();
-
-            var tabTargetKeybind = this.ModifyingKeybindTTK
-                ? this.CurrentKeys.ToString()
-                : (this.Configuration.TabTargetKeybind.Key != null ? this.Configuration.TabTargetKeybind.ToString() : "None");
-            var closestTargetKeybind = this.ModifyingKeybindCTK
-                ? this.CurrentKeys.ToString()
-                : (this.Configuration.ClosestTargetKeybind.Key != null ? this.Configuration.ClosestTargetKeybind.ToString() : "None");
-            var lowestHealthTargetKeybind = this.ModifyingKeybindLHTK
-                ? this.CurrentKeys.ToString()
-                : (this.Configuration.LowestHealthTargetKeybind.Key != null ? this.Configuration.LowestHealthTargetKeybind.ToString() : "None");
-            var highestHealthTargetKeybind = this.ModifyingKeybindHHTK
-                ? this.CurrentKeys.ToString()
-                : (this.Configuration.HighestHealthTargetKeybind.Key != null ? this.Configuration.HighestHealthTargetKeybind.ToString() : "None");
-            var bestAOETargetKeybind = this.ModifyingKeybindBAOETK
-                ? this.CurrentKeys.ToString()
-                : (this.Configuration.BestAOETargetKeybind.Key != null ? this.Configuration.BestAOETargetKeybind.ToString() : "None");
 
             //ImGui.Text("Keybinds Configuration:\n\n");
             ImGui.PushItemWidth(170);
-            ImGui.Text("\n[Cycle Targets]");
-            ImGui.InputText($"##ttk_Keybind", ref tabTargetKeybind, 200, ImGuiInputTextFlags.ReadOnly);
-            if (ImGui.IsItemActive())
-            {
-                ImGui.SetTooltip("Use Backspace to remove keybind");
-                this.ModifyingKeybindTTK = true;
-                // Prevent trying to set Alt-Tab as a keybind
-                if (this.CurrentKeys.Key != null && (this.CurrentKeys.Key != VirtualKey.TAB || this.CurrentKeys.AltModifier == false))
-                {
-                    this.Configuration.TabTargetKeybind = this.CurrentKeys;
-                    this.Configuration.Save();
-                    UnfocusInput();
-                }
-                else if (ImGui.IsKeyPressed(ImGuiKey.Backspace))
-                {
-                    this.Configuration.TabTargetKeybind = new Keybind();
-                    this.Configuration.Save();
-                    UnfocusInput();
-                }
-            }
-            else
-            {
-                this.ModifyingKeybindTTK = false;
-            }
 
-            ImGui.Text("\n");
+            foreach ( var keybind in this.Keybinds)
+            {
+                var confKeybind = this.Configuration.GetType().GetProperty(keybind.name);
+                if (confKeybind == null)
+                    continue;
 
-            ImGui.Text("[Closest Target]");
-            ImGui.InputText($"##ctk_Keybind", ref closestTargetKeybind, 200, ImGuiInputTextFlags.ReadOnly);
-            if (ImGui.IsItemActive())
-            {
-                ImGui.SetTooltip("Use Backspace to remove keybind");
-                this.ModifyingKeybindCTK = true;
-                // Prevent trying to set Alt-Tab as a keybind
-                if (this.CurrentKeys.Key != null && (this.CurrentKeys.Key != VirtualKey.TAB || this.CurrentKeys.AltModifier == false))
-                {
-                    this.Configuration.ClosestTargetKeybind = this.CurrentKeys;
-                    this.Configuration.Save();
-                    UnfocusInput();
-                }
-                else if (ImGui.IsKeyPressed(ImGuiKey.Backspace))
-                {
-                    this.Configuration.ClosestTargetKeybind = new Keybind();
-                    this.Configuration.Save();
-                    UnfocusInput();
-                }
-            }
-            else
-            {
-                this.ModifyingKeybindCTK = false;
-            }
+                var confKeybindValue = confKeybind.GetValue(this.Configuration, null) as Keybind;
+                if (confKeybindValue == null)
+                    continue;
 
-            ImGui.Text("\n");
+                keybind.value = keybind.EditingKeybind
+                    ? this.CurrentKeys.ToString()
+                    : confKeybindValue.Key != null ? confKeybindValue.ToString() : "None";
 
-            ImGui.Text("[Lowest Health Target]");
-            ImGui.InputText($"##lhtk_Keybind", ref lowestHealthTargetKeybind, 200, ImGuiInputTextFlags.ReadOnly);
-            if (ImGui.IsItemActive())
-            {
-                ImGui.SetTooltip("Use Backspace to remove keybind");
-                this.ModifyingKeybindLHTK = true;
-                // Prevent trying to set Alt-Tab as a keybind
-                if (this.CurrentKeys.Key != null && (this.CurrentKeys.Key != VirtualKey.TAB || this.CurrentKeys.AltModifier == false))
+                ImGui.Text($"\n{keybind.title}");
+                ImGui.InputText($"##{keybind.name}", ref keybind.value, 200, ImGuiInputTextFlags.ReadOnly);
+                if (ImGui.IsItemActive())
                 {
-                    this.Configuration.LowestHealthTargetKeybind = this.CurrentKeys;
-                    this.Configuration.Save();
-                    UnfocusInput();
+                    ImGui.SetTooltip("Use Backspace to remove keybind");
+                    keybind.EditingKeybind = true;
+                    // Prevent trying to set Alt-Tab as a keybind
+                    if (this.CurrentKeys.Key != null && (this.CurrentKeys.Key != VirtualKey.TAB || this.CurrentKeys.AltModifier == false))
+                    {
+                        confKeybind.SetValue(this.Configuration, this.CurrentKeys);
+                        this.Configuration.Save();
+                        UnfocusInput();
+                        keybind.EditingKeybind = false;
+                    }
+                    else if (ImGui.IsKeyPressed(ImGuiKey.Backspace))
+                    {
+                        confKeybind.SetValue(this.Configuration, new Keybind());
+                        this.Configuration.Save();
+                        UnfocusInput();
+                        keybind.EditingKeybind = false;
+                    }
                 }
-                else if (ImGui.IsKeyPressed(ImGuiKey.Backspace))
+                else
                 {
-                    this.Configuration.LowestHealthTargetKeybind = new Keybind();
-                    this.Configuration.Save();
-                    UnfocusInput();
+                    keybind.EditingKeybind = false;
                 }
             }
-            else
-            {
-                this.ModifyingKeybindLHTK = false;
-            }
+        }
 
-            ImGui.Text("\n");
-
-            ImGui.Text("[Highest Health Target]");
-            ImGui.InputText($"##hhtk_Keybind", ref highestHealthTargetKeybind, 200, ImGuiInputTextFlags.ReadOnly);
-            if (ImGui.IsItemActive())
-            {
-                ImGui.SetTooltip("Use Backspace to remove keybind");
-                this.ModifyingKeybindHHTK = true;
-                // Prevent trying to set Alt-Tab as a keybind
-                if (this.CurrentKeys.Key != null && (this.CurrentKeys.Key != VirtualKey.TAB || this.CurrentKeys.AltModifier == false))
-                {
-                    this.Configuration.HighestHealthTargetKeybind = this.CurrentKeys;
-                    this.Configuration.Save();
-                    UnfocusInput();
-                }
-                else if (ImGui.IsKeyPressed(ImGuiKey.Backspace))
-                {
-                    this.Configuration.HighestHealthTargetKeybind = new Keybind();
-                    this.Configuration.Save();
-                    UnfocusInput();
-                }
-            }
-            else
-            {
-                this.ModifyingKeybindHHTK = false;
-            }
-
-            ImGui.Text("\n");
-
-            ImGui.Text("[Best AOE Target]");
-            ImGui.InputText($"##baoetk_Keybind", ref bestAOETargetKeybind, 200, ImGuiInputTextFlags.ReadOnly);
-            if (ImGui.IsItemActive())
-            {
-                ImGui.SetTooltip("Use Backspace to remove keybind");
-                this.ModifyingKeybindBAOETK = true;
-                // Prevent trying to set Alt-Tab as a keybind
-                if (this.CurrentKeys.Key != null && (this.CurrentKeys.Key != VirtualKey.TAB || this.CurrentKeys.AltModifier == false))
-                {
-                    this.Configuration.BestAOETargetKeybind = this.CurrentKeys;
-                    this.Configuration.Save();
-                    UnfocusInput();
-                }
-                else if (ImGui.IsKeyPressed(ImGuiKey.Backspace))
-                {
-                    this.Configuration.BestAOETargetKeybind = new Keybind();
-                    this.Configuration.Save();
-                    UnfocusInput();
-                }
-            }
-            else
-            {
-                this.ModifyingKeybindBAOETK = false;
-            }
+        private void UnfocusInput()
+        {
+            this.CurrentKeys = new Keybind();
+            ImGui.SetWindowFocus(null); // unfocus window to clear keyboard focus
+            ImGui.SetWindowFocus(); // refocus window
         }
 
         private void SettingsConfig()
@@ -392,18 +309,6 @@ namespace BetterTargetingSystem.Windows
             }
 
             Plugin.DebugMode.Draw();
-        }
-
-        private void UnfocusInput()
-        {
-            this.ModifyingKeybindTTK = false;
-            this.ModifyingKeybindCTK = false;
-            this.ModifyingKeybindLHTK = false;
-            this.ModifyingKeybindHHTK = false;
-            this.ModifyingKeybindBAOETK = false;
-            this.CurrentKeys = new Keybind();
-            ImGui.SetWindowFocus(null); // unfocus window to clear keyboard focus
-            ImGui.SetWindowFocus(); // refocus window
         }
 
         private Keybind GetKeys()
