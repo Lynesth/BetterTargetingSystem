@@ -73,7 +73,7 @@ public unsafe class Keybind
             this.ControlModifier ? "Ctrl" : "",
             this.AltModifier ? "Alt" : "",
             this.ShiftModifier ? "Shift" : "",
-            this.Key != null ? this.Key.ToString()! : "",
+            this.Key?.ToString() ?? string.Empty,
         };
 
         return String.Join("+", keys.Where(s => s != ""));
