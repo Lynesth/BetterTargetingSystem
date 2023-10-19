@@ -1,14 +1,8 @@
-using Dalamud.Game;
-using Dalamud.Game.ClientState;
-using Dalamud.Game.ClientState.Conditions;
-using Dalamud.Game.ClientState.Keys;
 using Dalamud.Game.ClientState.Objects;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.Command;
-using Dalamud.Game.Gui;
 using Dalamud.Interface.Windowing;
 using Dalamud.IoC;
-using Dalamud.Logging;
 using Dalamud.Plugin;
 using Dalamud.Utility.Signatures;
 using FFXIVClientStructs.FFXIV.Client.Game.Event;
@@ -26,7 +20,6 @@ using DalamudCharacter = Dalamud.Game.ClientState.Objects.Types.Character;
 using DalamudGameObject = Dalamud.Game.ClientState.Objects.Types.GameObject;
 using ObjectKind = Dalamud.Game.ClientState.Objects.Enums.ObjectKind;
 using GameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
-using FFXIVClientStructs.FFXIV.Client.System.Framework;
 
 namespace BetterTargetingSystem;
 
@@ -163,6 +156,13 @@ public sealed unsafe class Plugin : IDalamudPlugin
             return;
         }
 
+        if (Configuration.HighestHealthTargetKeybind.IsPressed())
+        {
+            try { KeyState[(int)Configuration.HighestHealthTargetKeybind.Key!] = false; } catch { }
+            TargetHighestHealth();
+            return;
+        }
+
         if (Configuration.BestAOETargetKeybind.IsPressed())
         {
             try { KeyState[(int)Configuration.BestAOETargetKeybind.Key!] = false; } catch { }
@@ -177,24 +177,50 @@ public sealed unsafe class Plugin : IDalamudPlugin
         TargetManager.Target = target;
     }
 
-    private void TargetLowestHealth() => TargetClosest(true);
-
-    private void TargetClosest(bool lowestHealth = false)
+    private void TargetClosest()
     {
         if (Client.LocalPlayer == null)
             return;
 
         var (Targets, CloseTargets, EnemyListTargets, OnScreenTargets) = GetTargets();
-
-        // All objects in Targets and CloseTargets are in OnScreenTargets so it's not necessary to test them
-        if (EnemyListTargets.Count == 0 && OnScreenTargets.Count == 0)
-            return;
-
         var _targets = OnScreenTargets.Count > 0 ? OnScreenTargets : EnemyListTargets;
 
-        var _target = lowestHealth
-            ? _targets.OrderBy(o => (o as DalamudCharacter)?.CurrentHp).ThenBy(o => Utils.DistanceBetweenObjects(Client.LocalPlayer, o)).First()
-            : _targets.OrderBy(o => Utils.DistanceBetweenObjects(Client.LocalPlayer, o)).First();
+        if (_targets.Count == 0)
+            return;
+
+        var _target = _targets.OrderBy(o => Utils.DistanceBetweenObjects(Client.LocalPlayer, o)).First();
+
+        SetTarget(_target);
+    }
+
+    private void TargetLowestHealth()
+    {
+        if (Client.LocalPlayer == null)
+            return;
+
+        var (Targets, CloseTargets, EnemyListTargets, OnScreenTargets) = GetTargets();
+        var _targets = OnScreenTargets.Count > 0 ? OnScreenTargets : EnemyListTargets;
+
+        if (_targets.Count == 0)
+            return;
+
+        var _target = _targets.OrderBy(o => (o as DalamudCharacter)?.CurrentHp).ThenBy(o => Utils.DistanceBetweenObjects(Client.LocalPlayer, o)).First();
+
+        SetTarget(_target);
+    }
+
+    private void TargetHighestHealth()
+    {
+        if (Client.LocalPlayer == null)
+            return;
+
+        var (Targets, CloseTargets, EnemyListTargets, OnScreenTargets) = GetTargets();
+        var _targets = OnScreenTargets.Count > 0 ? OnScreenTargets : EnemyListTargets;
+
+        if (_targets.Count == 0)
+            return;
+
+        var _target = _targets.OrderByDescending(o => (o as DalamudCharacter)?.CurrentHp).ThenBy(o => Utils.DistanceBetweenObjects(Client.LocalPlayer, o)).First();
 
         SetTarget(_target);
     }

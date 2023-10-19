@@ -17,6 +17,7 @@ namespace BetterTargetingSystem.Windows
         private bool ModifyingKeybindTTK = false;
         private bool ModifyingKeybindCTK = false;
         private bool ModifyingKeybindLHTK = false;
+        private bool ModifyingKeybindHHTK = false;
         private bool ModifyingKeybindBAOETK = false;
 
         public ConfigWindow(Plugin plugin) : base(
@@ -53,7 +54,7 @@ namespace BetterTargetingSystem.Windows
 
         private void KeybindsConfig()
         {
-            if (this.ModifyingKeybindTTK || this.ModifyingKeybindCTK || this.ModifyingKeybindLHTK || this.ModifyingKeybindBAOETK)
+            if (this.ModifyingKeybindTTK || this.ModifyingKeybindCTK || this.ModifyingKeybindLHTK || this.ModifyingKeybindHHTK || this.ModifyingKeybindBAOETK)
                 this.CurrentKeys = GetKeys();
 
             var tabTargetKeybind = this.ModifyingKeybindTTK
@@ -65,6 +66,9 @@ namespace BetterTargetingSystem.Windows
             var lowestHealthTargetKeybind = this.ModifyingKeybindLHTK
                 ? this.CurrentKeys.ToString()
                 : (this.Configuration.LowestHealthTargetKeybind.Key != null ? this.Configuration.LowestHealthTargetKeybind.ToString() : "None");
+            var highestHealthTargetKeybind = this.ModifyingKeybindHHTK
+                ? this.CurrentKeys.ToString()
+                : (this.Configuration.HighestHealthTargetKeybind.Key != null ? this.Configuration.HighestHealthTargetKeybind.ToString() : "None");
             var bestAOETargetKeybind = this.ModifyingKeybindBAOETK
                 ? this.CurrentKeys.ToString()
                 : (this.Configuration.BestAOETargetKeybind.Key != null ? this.Configuration.BestAOETargetKeybind.ToString() : "None");
@@ -148,6 +152,33 @@ namespace BetterTargetingSystem.Windows
             else
             {
                 this.ModifyingKeybindLHTK = false;
+            }
+
+            ImGui.Text("\n");
+
+            ImGui.Text("[Highest Health Target]");
+            ImGui.InputText($"##hhtk_Keybind", ref highestHealthTargetKeybind, 200, ImGuiInputTextFlags.ReadOnly);
+            if (ImGui.IsItemActive())
+            {
+                ImGui.SetTooltip("Use Backspace to remove keybind");
+                this.ModifyingKeybindHHTK = true;
+                // Prevent trying to set Alt-Tab as a keybind
+                if (this.CurrentKeys.Key != null && (this.CurrentKeys.Key != VirtualKey.TAB || this.CurrentKeys.AltModifier == false))
+                {
+                    this.Configuration.HighestHealthTargetKeybind = this.CurrentKeys;
+                    this.Configuration.Save();
+                    UnfocusInput();
+                }
+                else if (ImGui.IsKeyPressed(ImGuiKey.Backspace))
+                {
+                    this.Configuration.HighestHealthTargetKeybind = new Keybind();
+                    this.Configuration.Save();
+                    UnfocusInput();
+                }
+            }
+            else
+            {
+                this.ModifyingKeybindHHTK = false;
             }
 
             ImGui.Text("\n");
@@ -368,6 +399,7 @@ namespace BetterTargetingSystem.Windows
             this.ModifyingKeybindTTK = false;
             this.ModifyingKeybindCTK = false;
             this.ModifyingKeybindLHTK = false;
+            this.ModifyingKeybindHHTK = false;
             this.ModifyingKeybindBAOETK = false;
             this.CurrentKeys = new Keybind();
             ImGui.SetWindowFocus(null); // unfocus window to clear keyboard focus
