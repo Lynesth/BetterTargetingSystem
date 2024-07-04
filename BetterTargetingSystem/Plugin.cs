@@ -409,10 +409,9 @@ public sealed unsafe class Plugin : IDalamudPlugin
              * This isn't exactly how I'd like to do it but since I couldn't find how to get
              * the "bounding box" of a game object or the dimensions of its model, this will have to do.
              */
-            FFXIVClientStructs.FFXIV.Common.Math.Vector2 v2 = new();
-            FFXIVClientStructs.FFXIV.Common.Math.Vector3 v3 = o->Position;
-            FFXIVClientStructs.FFXIV.Client.Graphics.Scene.Camera.WorldToScreenPoint(&v2, &v3);
-            FFXIVClientStructs.FFXIV.Common.Math.Vector2 screenPos = new(v2.X, v2.Y);
+            FFXIVClientStructs.FFXIV.Common.Math.Vector2 screenPos = new();
+            FFXIVClientStructs.FFXIV.Common.Math.Vector3 worldPos = o->Position;
+            FFXIVClientStructs.FFXIV.Client.Graphics.Scene.Camera.WorldToScreenPoint(&screenPos, &worldPos);
             if (screenPos.X < 0
                 || screenPos.X > deviceWidth
                 || screenPos.Y < 0
