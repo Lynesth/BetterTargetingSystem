@@ -88,12 +88,12 @@ public unsafe class Utils
 
         direction = direction.Normalized;
 
-        System.Numerics.Vector3 v3 = new System.Numerics.Vector3(sourcePos.X, sourcePos.Y, sourcePos.Z);
-        System.Numerics.Vector3 v4 = new System.Numerics.Vector3(direction.X, direction.Y, direction.Z);
+        System.Numerics.Vector3 originVect = new System.Numerics.Vector3(sourcePos.X, sourcePos.Y, sourcePos.Z);
+        System.Numerics.Vector3 directionVect = new System.Numerics.Vector3(direction.X, direction.Y, direction.Z);
 
         RaycastHit hit;
         var flags = stackalloc int[] { 0x4000, 0, 0x4000, 0 };
-        var isLoSBlocked = CSFramework.Instance()->BGCollisionModule->RaycastMaterialFilter(&hit, &v3, &v4, distance, 1, flags);
+        var isLoSBlocked = CSFramework.Instance()->BGCollisionModule->RaycastMaterialFilter(&hit, &originVect, &directionVect, distance, 1, flags);
 
         return isLoSBlocked == false;
     }
