@@ -3,7 +3,7 @@ using ImGuiNET;
 using System;
 using System.Linq;
 using System.Numerics;
-using DalamudGameObject = Dalamud.Game.ClientState.Objects.Types.GameObject;
+using DalamudGameObject = Dalamud.Game.ClientState.Objects.Types.IGameObject;
 using GameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 
 namespace BetterTargetingSystem;
@@ -107,7 +107,7 @@ public unsafe class DebugMode
             foreach (var target in ConeTargets)
                 HighlightTarget(target, new Vector4(1, 0, 0, 1));
 
-            foreach (var target in CloseTargets.ExceptBy(ConeTargets.Select(o => o.ObjectId), o => o.ObjectId))
+            foreach (var target in CloseTargets.ExceptBy(ConeTargets.Select(o => o.EntityId), o => o.EntityId))
                 HighlightTarget(target, new Vector4(0, 0.8f, 1, 1));
         }
         else
