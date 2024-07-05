@@ -1,8 +1,9 @@
-using Dalamud.Game.ClientState.Keys;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Dalamud.Game.ClientState.Keys;
+
 using CSFramework = FFXIVClientStructs.FFXIV.Client.System.Framework.Framework;
 
 namespace BetterTargetingSystem.Keybinds;
@@ -61,7 +62,7 @@ public unsafe class Keybind
 
         MouseKey? mouseKey;
         if ((mouseKey = this.GetMouseKey()) != null)
-            return (((byte*)CSFramework.Instance()->GetUiModule()->GetUIInputData())[0x4D8] & (int)mouseKey) != 0;
+            return (((byte*)CSFramework.Instance()->GetUIModule()->GetUIInputData())[0x4D8] & (int)mouseKey) != 0;
         else
             return Plugin.KeyState[(int)this.Key];
     }
@@ -79,8 +80,8 @@ public unsafe class Keybind
         return String.Join("+", keys.Where(s => s != ""));
     }
 
-    public static List<VirtualKey> SupportedKeys = new List<VirtualKey>()
-    {
+    public static List<VirtualKey> SupportedKeys =
+    [
         VirtualKey.MBUTTON,
         VirtualKey.XBUTTON1,
         VirtualKey.XBUTTON2,
@@ -172,7 +173,7 @@ public unsafe class Keybind
         VirtualKey.OEM_7,
         VirtualKey.OEM_8,
         VirtualKey.OEM_102,
-    };
+    ];
 
     public enum MouseKey
     {

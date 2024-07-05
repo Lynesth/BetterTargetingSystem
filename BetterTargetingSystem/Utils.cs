@@ -1,27 +1,28 @@
+using System;
+using System.Collections.Generic;
+using System.Numerics;
+using Dalamud.Game.ClientState.Objects.Types;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Common.Component.BGCollision;
-using System;
-using System.Numerics;
-using DalamudGameObject = Dalamud.Game.ClientState.Objects.Types.GameObject;
-using GameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
+
+using CSGameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 using CameraManager = FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CameraManager;
 using CSFramework = FFXIVClientStructs.FFXIV.Client.System.Framework.Framework;
-using System.Collections.Generic;
-using Dalamud.Utility.Signatures;
 
 namespace BetterTargetingSystem;
 
 public unsafe class Utils
 {
-    private static RaptureAtkModule* RaptureAtkModule => CSFramework.Instance()->GetUiModule()->GetRaptureAtkModule();
+    private static RaptureAtkModule* RaptureAtkModule => CSFramework.Instance()->GetUIModule()->GetRaptureAtkModule();
     internal static bool IsTextInputActive => RaptureAtkModule->AtkModule.IsTextInputActive();
 
-    internal static bool CanAttack(DalamudGameObject obj)
+    internal static bool CanAttack(IGameObject obj)
     {
-        return Plugin.CanAttackFunction?.Invoke(142, obj.Address) == 1;
+        return ActionManager.CanUseActionOnTarget(142, (CSGameObject*)obj.Address);
     }
 
-    internal static float DistanceBetweenObjects(DalamudGameObject source, DalamudGameObject target)
+    internal static float DistanceBetweenObjects(IGameObject source, IGameObject target)
     {
         return DistanceBetweenObjects(source.Position, target.Position, target.HitboxRadius);
     }
@@ -48,7 +49,7 @@ public unsafe class Utils
         return rotation;
     }
 
-    internal static bool IsInFrontOfCamera(DalamudGameObject obj, float maxAngle)
+    internal static bool IsInFrontOfCamera(IGameObject obj, float maxAngle)
     {
         // This is still relying on camera orientation but the cone is from the player's position
         if (Plugin.Client.LocalPlayer == null)
@@ -63,9 +64,9 @@ public unsafe class Utils
         return angle <= Math.PI * maxAngle / 360;
     }
 
-    internal static bool IsInLineOfSight(GameObject* target, bool useCamera = false)
+    internal static bool IsInLineOfSight(IGameObject target, bool useCamera = false)
     {
-        var sourcePos = FFXIVClientStructs.FFXIV.Common.Math.Vector3.Zero;
+        var sourcePos = Vector3.Zero;
         if (useCamera)
         {
             // Using the camera's position as origin for raycast
@@ -75,40 +76,41 @@ public unsafe class Utils
         {
             // Using player's position as origin for raycast
             if (Plugin.Client.LocalPlayer == null) return false;
-            var player = (GameObject*)Plugin.Client.LocalPlayer.Address;
+            var player = (CSGameObject*)Plugin.Client.LocalPlayer.Address;
             sourcePos = player->Position;
             sourcePos.Y += 2;
         }
 
-        var targetPos = target->Position;
+        var targetPos = target.Position;
         targetPos.Y += 2;
 
-        var direction = targetPos - sourcePos;
-        var distance = direction.Magnitude;
+        var delta = targetPos - sourcePos;
+        var distance = delta.Length();
 
-        direction = direction.Normalized;
+        var direction = Vector3.Normalize(delta);
 
         RaycastHit hit;
         var flags = stackalloc int[] { 0x4000, 0, 0x4000, 0 };
-        var isLoSBlocked = CSFramework.Instance()->BGCollisionModule->RaycastEx(&hit, sourcePos, direction, distance, 1, flags);
+        var isLoSBlocked = CSFramework.Instance()->BGCollisionModule->RaycastMaterialFilter(&hit, &sourcePos, &direction, distance, 1, flags);
 
         return isLoSBlocked == false;
     }
 
-    internal static uint[] GetEnemyListObjectIds()
+    internal static List<ulong> GetEnemyListObjectIds()
     {
         var addonByName = Plugin.GameGui.GetAddonByName("_EnemyList", 1);
         if (addonByName == IntPtr.Zero)
-            return Array.Empty<uint>();
+            return [];
 
         var addon = (AddonEnemyList*)addonByName;
         var numArray = RaptureAtkModule->AtkModule.AtkArrayDataHolder.NumberArrays[21];
-        var list = new List<uint>(addon->EnemyCount);
+        var list = new List<ulong>(addon->EnemyCount);
         for (var i = 0; i < addon->EnemyCount; i++)
         {
             var id = (uint)numArray->IntArray[8 + (i * 6)];
             list.Add(id);
         }
-        return list.ToArray();
+
+        return list;
     }
 }

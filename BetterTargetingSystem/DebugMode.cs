@@ -1,10 +1,11 @@
-using Dalamud.Game.ClientState.Conditions;
-using ImGuiNET;
 using System;
 using System.Linq;
 using System.Numerics;
-using DalamudGameObject = Dalamud.Game.ClientState.Objects.Types.GameObject;
-using GameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
+using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Types;
+using ImGuiNET;
+
+using CSGameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 
 namespace BetterTargetingSystem;
 
@@ -107,7 +108,7 @@ public unsafe class DebugMode
             foreach (var target in ConeTargets)
                 HighlightTarget(target, new Vector4(1, 0, 0, 1));
 
-            foreach (var target in CloseTargets.ExceptBy(ConeTargets.Select(o => o.ObjectId), o => o.ObjectId))
+            foreach (var target in CloseTargets.ExceptBy(ConeTargets.Select(o => o.GameObjectId), o => o.GameObjectId))
                 HighlightTarget(target, new Vector4(0, 0.8f, 1, 1));
         }
         else
@@ -118,12 +119,12 @@ public unsafe class DebugMode
         ImGui.End();
     }
 
-    private void HighlightTarget(DalamudGameObject target, Vector4 colour)
+    private void HighlightTarget(IGameObject target, Vector4 colour)
     {
         Plugin.GameGui.WorldToScreen(target.Position, out var screenPos);
         var camera = FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CameraManager.Instance()->CurrentCamera->Object;
         var distance = Utils.DistanceBetweenObjects(camera.Position, target.Position, 0);
-        var size = (int)Math.Round(100 * (25 / distance)) * Math.Max(target.HitboxRadius, ((GameObject*)target.Address)->Height);
+        var size = (int)Math.Round(100 * (25 / distance)) * Math.Max(target.HitboxRadius, ((CSGameObject*)target.Address)->Height);
         ImGui.GetWindowDrawList().AddRect(
             new Vector2(screenPos.X - (size / 2), screenPos.Y),
             new Vector2(screenPos.X + (size / 2), screenPos.Y - size),
