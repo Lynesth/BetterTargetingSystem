@@ -2,7 +2,7 @@ using FFXIVClientStructs.FFXIV.Client.UI;
 using FFXIVClientStructs.FFXIV.Common.Component.BGCollision;
 using System;
 using System.Numerics;
-using DalamudGameObject = Dalamud.Game.ClientState.Objects.Types.GameObject;
+using DalamudGameObject = Dalamud.Game.ClientState.Objects.Types.IGameObject;
 using GameObject = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 using CameraManager = FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CameraManager;
 using CSFramework = FFXIVClientStructs.FFXIV.Client.System.Framework.Framework;
@@ -13,7 +13,7 @@ namespace BetterTargetingSystem;
 
 public unsafe class Utils
 {
-    private static RaptureAtkModule* RaptureAtkModule => CSFramework.Instance()->GetUiModule()->GetRaptureAtkModule();
+    private static RaptureAtkModule* RaptureAtkModule => CSFramework.Instance()->GetUIModule()->GetRaptureAtkModule();
     internal static bool IsTextInputActive => RaptureAtkModule->AtkModule.IsTextInputActive();
 
     internal static bool CanAttack(DalamudGameObject obj)
@@ -88,9 +88,12 @@ public unsafe class Utils
 
         direction = direction.Normalized;
 
+        System.Numerics.Vector3 originVect = new System.Numerics.Vector3(sourcePos.X, sourcePos.Y, sourcePos.Z);
+        System.Numerics.Vector3 directionVect = new System.Numerics.Vector3(direction.X, direction.Y, direction.Z);
+
         RaycastHit hit;
         var flags = stackalloc int[] { 0x4000, 0, 0x4000, 0 };
-        var isLoSBlocked = CSFramework.Instance()->BGCollisionModule->RaycastEx(&hit, sourcePos, direction, distance, 1, flags);
+        var isLoSBlocked = CSFramework.Instance()->BGCollisionModule->RaycastMaterialFilter(&hit, &originVect, &directionVect, distance, 1, flags);
 
         return isLoSBlocked == false;
     }
