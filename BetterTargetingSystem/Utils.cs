@@ -8,6 +8,7 @@ using CameraManager = FFXIVClientStructs.FFXIV.Client.Graphics.Scene.CameraManag
 using CSFramework = FFXIVClientStructs.FFXIV.Client.System.Framework.Framework;
 using System.Collections.Generic;
 using Dalamud.Utility.Signatures;
+using FFXIVClientStructs.FFXIV.Client.Game;
 
 namespace BetterTargetingSystem;
 
@@ -18,7 +19,7 @@ public unsafe class Utils
 
     internal static bool CanAttack(DalamudGameObject obj)
     {
-        return Plugin.CanAttackFunction?.Invoke(142, obj.Address) == 1;
+        return ActionManager.CanUseActionOnTarget(142, (GameObject*)obj.Address);
     }
 
     internal static float DistanceBetweenObjects(DalamudGameObject source, DalamudGameObject target)

@@ -53,9 +53,9 @@ public sealed unsafe class Plugin : IDalamudPlugin
     private WindowSystem WindowSystem = new("BetterTargetingSystem");
 
     // Shamelessly stolen, not sure what that game function exactly does but it works
-    [Signature("48 89 5C 24 ?? 57 48 83 EC 20 48 8B DA 8B F9 E8 ?? ?? ?? ?? 4C 8B C3")]
-    internal static CanAttackDelegate? CanAttackFunction = null!;
-    internal delegate nint CanAttackDelegate(nint a1, nint objectAddress);
+    //[Signature("48 89 5C 24 ?? 57 48 83 EC 20 48 8B DA 8B F9 E8 ?? ?? ?? ?? 4C 8B C3")]
+    //internal static CanAttackDelegate? CanAttackFunction = null!;
+    //internal delegate nint CanAttackDelegate(nint a1, nint objectAddress);
 
     public Plugin(
         IDalamudPluginInterface pluginInterface,
